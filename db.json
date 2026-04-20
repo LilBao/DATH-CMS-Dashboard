@@ -1,0 +1,177 @@
+{
+  "shifts": [
+    {
+      "id": "sh1",
+      "employeeName": "Elena Rodriguez",
+      "role": "Manager",
+      "branch": "Downtown Plaza",
+      "date": "2023-10-23",
+      "startTime": "08:00",
+      "endTime": "16:00",
+      "theme": "lavender"
+    },
+    {
+      "id": "sh2",
+      "employeeName": "Marcus Chen",
+      "role": "Projectionist",
+      "branch": "Downtown Plaza",
+      "date": "2023-10-23",
+      "startTime": "14:00",
+      "endTime": "22:00",
+      "theme": "mint"
+    },
+    {
+      "id": "sh3",
+      "employeeName": "Sarah Jenkins",
+      "role": "Box Office",
+      "branch": "Downtown Plaza",
+      "date": "2023-10-24",
+      "startTime": "09:00",
+      "endTime": "15:00",
+      "theme": "blue"
+    },
+    {
+      "id": "sh4",
+      "employeeName": "David Kim",
+      "role": "Cashier",
+      "date": "2023-10-25",
+      "startTime": "10:00",
+      "endTime": "16:00",
+      "branch": "Downtown Plaza",
+      "theme": "orange"
+    },
+    {
+      "id": "sh5",
+      "employeeName": "Elena Rodriguez",
+      "role": "Manager",
+      "branch": "Downtown Plaza",
+      "date": "2023-10-26",
+      "startTime": "12:00",
+      "endTime": "20:00",
+      "theme": "lavender"
+    },
+    {
+      "id": "sh6",
+      "employeeName": "Alex Rivera",
+      "role": "Box Office",
+      "branch": "Downtown Plaza",
+      "date": "2023-10-27",
+      "startTime": "15:00",
+      "endTime": "23:00",
+      "theme": "blue"
+    },
+    {
+      "id": "sh7",
+      "employeeName": "Marcus Chen",
+      "role": "Projectionist",
+      "branch": "Downtown Plaza",
+      "date": "2023-10-28",
+      "startTime": "08:00",
+      "endTime": "16:00",
+      "theme": "mint"
+    },
+    {
+      "id": "a4ThFtvF3rY",
+      "employeeName": "Elena Rodriguez",
+      "role": "Box Office",
+      "date": "2023-10-25",
+      "startTime": "09:00",
+      "endTime": "17:00",
+      "branch": "Downtown Plaza",
+      "theme": "blue"
+    }
+  ],
+  "movies": [
+    {
+      "id": "m1",
+      "title": "Dune: Part Two",
+      "duration": 166,
+      "genre": "Action, Sci-Fi",
+      "status": "Now Showing",
+      "releaseDate": "2024-03-01",
+      "closeDate": "2024-05-30",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2JGjjcNsV.jpg"
+    },
+    {
+      "id": "m2",
+      "title": "Oppenheimer",
+      "duration": 180,
+      "genre": "Biography, Drama",
+      "status": "Ended",
+      "releaseDate": "2023-07-21",
+      "closeDate": "2023-10-15",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg"
+    },
+    {
+      "id": "m3",
+      "title": "Deadpool & Wolverine",
+      "duration": 127,
+      "genre": "Action, Comedy",
+      "status": "Now Showing",
+      "releaseDate": "2024-07-26",
+      "closeDate": "2024-10-31",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg"
+    },
+    {
+      "id": "m4",
+      "title": "Inside Out 2",
+      "duration": 96,
+      "genre": "Animation, Family",
+      "status": "Ended",
+      "releaseDate": "2024-06-14",
+      "closeDate": "2024-09-20",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzRxqwSy404.jpg"
+    },
+    {
+      "id": "m5",
+      "title": "Spider-Man: Across the Spider-Verse",
+      "duration": 140,
+      "genre": "Animation, Action",
+      "status": "Ended",
+      "releaseDate": "2023-06-02",
+      "closeDate": "2023-09-10",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg"
+    },
+    {
+      "id": "m6",
+      "title": "Avatar 3: Fire and Ash",
+      "duration": 192,
+      "genre": "Action, Adventure",
+      "status": "Coming Soon",
+      "releaseDate": "2025-12-19",
+      "closeDate": "2026-03-31",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/t6HIqrHeCPu4w108r94yNlY7N1y.jpg"
+    },
+    {
+      "id": "m7",
+      "title": "John Wick: Chapter 4",
+      "duration": 169,
+      "genre": "Action, Thriller",
+      "status": "Ended",
+      "releaseDate": "2023-03-24",
+      "closeDate": "2023-06-30",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/vZloFAK7NmvMGKE7VkF5UHazJqc.jpg"
+    },
+    {
+      "id": "m8",
+      "title": "The Batman",
+      "duration": 176,
+      "genre": "Action, Crime",
+      "status": "Ended",
+      "releaseDate": "2022-03-04",
+      "closeDate": "2022-06-15",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/74xTEgt7R36Fpooo50r9T25onhq.jpg"
+    },
+    {
+      "id": "m9",
+      "title": "Mickey 17",
+      "duration": 139,
+      "genre": "Sci-Fi, Drama",
+      "status": "Coming Soon",
+      "releaseDate": "2025-03-07",
+      "closeDate": "2025-06-30",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/ehtxXwGjOeqK73xPIfO61z1t99g.jpg"
+    }
+  ],
+  "$schema": "./node_modules/json-server/schema.json"
+}
