@@ -1,27 +1,37 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+"use client";
+
+import { Inter, Geist } from "next/font/google";
 import "./globals.css";
 import Navigation from "./components/Navigation";
 import { Toaster } from "sonner";
+import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
 
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 const inter = Inter({ subsets: ["latin"] });
-
-export const metadata: Metadata = {
-  title: "Cinema Admin Dashboard",
-  description: "Manage your cinema branches, movies, and showtimes",
-};
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = usePathname();
+
+  // Kiểm tra nếu đang ở trang login
+  const isLoginPage = pathname === "/login";
+
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className={`${inter.className} bg-[#f7f9fb] text-gray-900 antialiased`}>
         <div className="flex min-h-screen relative">
-          <Navigation />
-          <main className="flex-1 ml-[256px] p-8">
+          
+          {/* Chỉ hiển thị Navigation nếu không phải trang login */}
+          {!isLoginPage && <Navigation />}
+          
+          <main className={cn(
+            "flex-1 p-8 transition-all duration-300",
+            isLoginPage ? "ml-0" : "ml-[256px]" 
+          )}>
             {children}
           </main>
         </div>
