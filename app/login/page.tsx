@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { authService, LoginPayload } from "@/services/authService"; 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -16,35 +17,38 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
 
+    // Chuẩn bị dữ liệu theo Interface LoginPayload
+    const payload: LoginPayload = {
+      provider: 'LOCAL',
+      email: email,
+      password: password
+    };
+
     try {
-      const response = await fetch(`http://localhost:3001/employees?email=${email}`);
-      const employees = await response.json();
+      // Gọi API Login
+      const loginResponse = await authService.login(payload);
+      
+      // Lấy thông tin chi tiết của User vừa login (Sử dụng endpoint /auth/me)
+      const userRes = await authService.getMe();
+      const userData = userRes.data;
 
-      if (employees.length > 0) {
-        const user = employees[0];
+      // Lưu thông tin vào localStorage để Navigation hiển thị
+      localStorage.setItem("user", JSON.stringify({
+        name: userData.fullName || userData.name,
+        role: userData.role || "Staff",
+        avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.name}`,
+        email: userData.email
+      }));
 
-        if (user.password === password) {
-          const userData = {
-            name: user.name,
-            role: user.role || "Staff",
-            avatar: user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`,
-            email: user.email
-          };
-
-          localStorage.setItem("user", JSON.stringify(userData));
-
-          toast.success(`Chào mừng trở lại, ${user.name}!`);
-
-          window.location.href = "/";
-        } else {
-          toast.error("Mật khẩu không chính xác");
-        }
-      } else {
-        toast.error("Email không tồn tại trong hệ thống");
-      }
-    } catch (error) {
-      console.error("Login error:", error);
-      toast.error("Lỗi kết nối đến máy chủ (Kiểm tra JSON Server)");
+      toast.success("Đăng nhập thành công!");
+      
+      // Điều hướng về Dashboard
+      window.location.href = "/";
+      
+    } catch (error: any) {
+      // Xử lý lỗi từ Axios
+      const message = error.response?.data?.message || "Email hoặc mật khẩu không đúng";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -57,17 +61,15 @@ export default function LoginPage() {
           <CardTitle className="text-2xl font-black text-gray-800 uppercase tracking-tight">
             Cinema Login
           </CardTitle>
-          <CardDescription>Nhập tài khoản nhân viên để tiếp tục</CardDescription>
+          <CardDescription>Sử dụng tài khoản hệ thống để truy cập</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase text-gray-400">
-                Email Nhân Viên
-              </Label>
+              <Label className="text-xs font-bold uppercase text-gray-400">Email</Label>
               <Input
                 type="email"
-                placeholder="name@cinema.com"
+                placeholder="admin@cinema.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -75,11 +77,7 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-xs font-bold uppercase text-gray-400">
-                  Mật Khẩu
-                </Label>
-              </div>
+              <Label className="text-xs font-bold uppercase text-gray-400">Mật khẩu</Label>
               <Input
                 type="password"
                 placeholder="••••••••"
@@ -92,17 +90,11 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full py-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold transition-all shadow-lg shadow-indigo-100"
+              className="w-full py-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold transition-all shadow-lg"
             >
-              {isLoading ? "Đang xác thực..." : "Đăng Nhập"}
+              {isLoading ? "Đang xử lý..." : "Đăng Nhập"}
             </Button>
           </form>
-          
-          <div className="mt-6 text-center">
-             <p className="text-xs text-gray-400">
-               Quên mật khẩu? Vui lòng liên hệ Quản lý chi nhánh.
-             </p>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 
 // Cấu hình BaseURL của BE. Tuỳ vào môi trường sẽ dùng .env thích hợp.
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api', // Thay đổi đường dẫn gốc tuỳ server logic
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080', // Thay đổi đường dẫn gốc tuỳ server logic
   headers: {
     'Content-Type': 'application/json',
   },

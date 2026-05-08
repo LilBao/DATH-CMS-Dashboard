@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { authService, LoginPayload } from "@/services/authService"; 
 import { usePathname, useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Film, CalendarDays, MapPin, 
@@ -36,10 +37,15 @@ export default function Navigation() {
     }
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    toast.success("Logged out successfully");
-    window.location.href = '/login';
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch (err) {
+      console.error("Logout API failed", err);
+    } finally {
+      localStorage.removeItem("user");
+      window.location.href = "/login";
+    }
   };
 
   const menuItems = [
