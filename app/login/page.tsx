@@ -39,22 +39,20 @@ export default function LoginPage() {
     try {
       // Gọi API Login
       const loginResponse = await authService.login(payload);
-      const { accessToken, refreshToken } = loginResponse.data;
+      const { accessToken, refreshToken } = loginResponse;
 
-      // Lưu token vào Store (Cũng tự động lưu vào Cookie)
       setTokens(accessToken, refreshToken);
 
-      // Lấy thông tin chi tiết của User vừa login (Sử dụng endpoint /auth/me)
       const userRes = await authService.getMe();
-      const userData = userRes.data;
+      const userData = userRes;
 
-      // Lưu thông tin vào Store
       setUser({
         name: userData.fullName || userData.name,
         role: userData.role || "Staff",
         avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.fullName || userData.name}`,
         email: userData.email,
-        id: userData.id
+        id: userData.id,
+        branchId: userData.branchId
       });
 
       toast.success("Đăng nhập thành công!");

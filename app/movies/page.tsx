@@ -7,65 +7,35 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import MovieFormModal from "../components/MovieFormModal";
-import { movieService, Movie, MovieStatus } from "@/services/movieService";
+import { movieService, MovieResponse, MovieRequest } from "@/services/movieService";
 import {
   Dialog, DialogContent, DialogDescription,
   DialogFooter, DialogHeader, DialogTitle,
 } from "../components/ui/movie_dialog";
 
-// Logic chuẩn hóa trạng thái phim dựa trên ngày tháng thực tế
-const normalizeStatus = (status?: string, releaseDate?: string, closeDate?: string): MovieStatus => {
-  if (status === "Now Showing" || status === "Ended" || status === "Coming Soon") {
-    return status as MovieStatus;
-  }
-
-  const today = new Date().toISOString().split("T")[0];
-
-  if (releaseDate && releaseDate > today) return "Coming Soon";
-  if (closeDate && closeDate < today) return "Ended";
-
-  return "Now Showing";
-};
-
-// Chuyển đổi dữ liệu thô từ API sang Interface chuẩn
-const normalizeMovie = (movie: any): Movie => {
-  const releaseDate = movie.releaseDate ?? "";
-  const closeDate = movie.closeDate ?? movie.closingDate ?? "";
-  const genre = Array.isArray(movie.genre)
-    ? movie.genre.join(", ")
-    : movie.genre ?? "Unknown";
-
-  return {
-    id: String(movie.id),
-    title: movie.title ?? movie.name ?? "Untitled Movie",
-    duration: Number(movie.duration ?? 0),
-    genre,
-    status: normalizeStatus(movie.status, releaseDate, closeDate),
-    posterUrl: movie.posterUrl ?? movie.poster ?? "",
-    releaseDate,
-    closeDate,
-    description: movie.description || "",
-    cast: movie.cast || "",
-  };
-};
-
 export default function MoviesPage() {
-  const [movies, setMovies] = useState<Movie[]>([]);
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<MovieStatus | "All">("All");
+  const [statusFilter, setStatusFilter] = useState<string>("All");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [movieToEdit, setMovieToEdit] = useState<Movie | null>(null);
-  const [movieToDelete, setMovieToDelete] = useState<Movie | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [movieToEdit, setMovieToEdit] = useState<MovieResponse | null>(null);
+  const [movieToDelete, setMovieToDelete] = useState<MovieResponse | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const getStatus = (m: MovieResponse) => {
+    const today = new Date().toISOString().split("T")[0];
+    if (m.releaseDate && m.releaseDate > today) return "Coming Soon";
+    if (m.closingDate && m.closingDate < today) return "Ended";
+    return "Now Showing";
+  };
 
   // Fetch dữ liệu từ MovieService
   const fetchMovies = async () => {
     try {
       setIsLoading(true);
       const data = await movieService.getAll();
-      const rawMovies = Array.isArray(data) ? data : data.data ?? [];
-      setMovies(rawMovies.map(normalizeMovie));
+      setMovies(data);
     } catch (error) {
       toast.error("Không thể kết nối đến máy chủ phim.");
     } finally {
@@ -80,15 +50,16 @@ export default function MoviesPage() {
   const filteredMovies = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     return movies.filter((movie) => {
-      const matchesKeyword = !keyword || 
-        movie.title.toLowerCase().includes(keyword) || 
-        movie.genre.toLowerCase().includes(keyword);
-      const matchesStatus = statusFilter === "All" || movie.status === statusFilter;
+      const genresStr = movie.genres?.join(", ").toLowerCase() || "";
+      const matchesKeyword = !keyword ||
+        movie.mName.toLowerCase().includes(keyword) ||
+        genresStr.includes(keyword);
+      const matchesStatus = statusFilter === "All" || getStatus(movie) === statusFilter;
       return matchesKeyword && matchesStatus;
     });
   }, [movies, searchQuery, statusFilter]);
 
-  const getStatusColor = (status: MovieStatus) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case "Now Showing": return "bg-emerald-100 text-emerald-700";
       case "Coming Soon": return "bg-amber-100 text-amber-700";
@@ -99,16 +70,15 @@ export default function MoviesPage() {
 
   const handleSaveMovie = async (movieData: any) => {
     try {
-      const savedData = await movieService.save(movieData, movieToEdit?.id);
-      const savedMovie = normalizeMovie(savedData);
+      const savedData = await movieService.save(movieData, movieToEdit?.movieId.toString());
 
       setMovies((prev) =>
         movieToEdit
-          ? prev.map((m) => (m.id === savedMovie.id ? savedMovie : m))
-          : [savedMovie, ...prev],
+          ? prev.map((m) => (m.movieId === savedData.movieId ? savedData : m))
+          : [savedData, ...prev],
       );
-      
-      toast.success(`Phim "${savedMovie.title}" đã được lưu!`);
+
+      toast.success(`Phim "${savedData.mName}" đã được lưu!`);
       setIsModalOpen(false);
       setMovieToEdit(null);
     } catch (error) {
@@ -150,8 +120,8 @@ export default function MoviesPage() {
   const handleConfirmDelete = async () => {
     if (!movieToDelete) return;
     try {
-      await movieService.delete(movieToDelete.id);
-      setMovies((prev) => prev.filter((m) => m.id !== movieToDelete.id));
+      await movieService.delete(movieToDelete.movieId.toString());
+      setMovies((prev) => prev.filter((m) => m.movieId !== movieToDelete.movieId));
       toast.success("Đã xóa phim thành công.");
       setMovieToDelete(null);
     } catch (error) {
@@ -165,12 +135,12 @@ export default function MoviesPage() {
 
       <MovieFormModal
         isOpen={isModalOpen}
-        onClose={() => { 
-          setIsModalOpen(false); 
-          setMovieToEdit(null); 
+        onClose={() => {
+          setIsModalOpen(false);
+          setMovieToEdit(null);
         }}
         onSave={handleSaveMovie}
-        existingMovies={movies} 
+        existingMovies={movies}
         initialData={movieToEdit}
       />
 
@@ -179,7 +149,7 @@ export default function MoviesPage() {
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-gray-900 uppercase tracking-tight">Xác nhận xóa</DialogTitle>
             <DialogDescription className="text-sm text-gray-500 mt-2">
-              Bạn có chắc muốn gỡ bỏ phim <span className="font-bold text-gray-800 tracking-tight">"{movieToDelete?.title}"</span>?
+              Bạn có chắc muốn gỡ bỏ phim <span className="font-bold text-gray-800 tracking-tight">"{movieToDelete?.mName}"</span>?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-8 flex justify-end gap-3">
@@ -242,21 +212,21 @@ export default function MoviesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5 gap-8">
-          {filteredMovies.map((movie) => (
-            <div key={movie.id} className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden hover:shadow-2xl transition-all group relative flex flex-col">
+          {filteredMovies.map((movie, i) => (
+            <div key={movie.movieId || i} className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden hover:shadow-2xl transition-all group relative flex flex-col">
               <div className="aspect-[2/3] w-full overflow-hidden relative bg-gray-50 shrink-0">
                 {movie.posterUrl ? (
-                  <img src={movie.posterUrl} alt={movie.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                  <img src={movie.posterUrl} alt={movie.mName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px] font-black px-4 text-center uppercase tracking-tighter">No Poster Image</div>
                 )}
 
-                <div className={`absolute top-4 right-4 transition-opacity z-20 ${openMenuId === movie.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-                  <button onClick={() => setOpenMenuId(openMenuId === movie.id ? null : movie.id)} className="p-2.5 bg-white/90 backdrop-blur-md rounded-xl text-gray-700 hover:text-indigo-600 shadow-xl transition-all border border-transparent hover:border-indigo-100">
+                <div className={`absolute top-4 right-4 transition-opacity z-20 ${openMenuId === movie.movieId ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                  <button onClick={() => setOpenMenuId(openMenuId === movie.movieId ? null : movie.movieId)} className="p-2.5 bg-white/90 backdrop-blur-md rounded-xl text-gray-700 hover:text-indigo-600 shadow-xl transition-all border border-transparent hover:border-indigo-100">
                     <MoreVertical className="w-5 h-5" />
                   </button>
 
-                  {openMenuId === movie.id && (
+                  {openMenuId === movie.movieId && (
                     <div className="absolute right-0 mt-3 w-40 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right z-50">
                       <button onClick={() => { setOpenMenuId(null); setMovieToEdit(movie); setIsModalOpen(true); }} className="w-full flex items-center gap-3 px-5 py-4 text-[11px] font-black text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors uppercase tracking-widest"><Edit className="w-4 h-4" /> Hiệu chỉnh</button>
                       <button onClick={() => { setOpenMenuId(null); setMovieToDelete(movie); }} className="w-full flex items-center gap-3 px-5 py-4 text-[11px] font-black text-rose-600 hover:bg-rose-50 transition-colors border-t border-gray-50 uppercase tracking-widest"><Trash2 className="w-4 h-4" /> Gỡ bỏ</button>
@@ -266,16 +236,16 @@ export default function MoviesPage() {
               </div>
 
               <div className="p-7 flex flex-col flex-1">
-                <h3 className="font-black text-gray-800 text-lg leading-tight mb-1 line-clamp-2 uppercase tracking-tighter">{movie.title}</h3>
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-5">{movie.genre}</p>
+                <h3 className="font-black text-gray-800 text-lg leading-tight mb-1 line-clamp-2 uppercase tracking-tighter">{movie.mName}</h3>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-5">{movie.genres?.join(", ") || "Unknown"}</p>
 
                 <div className="mt-auto flex items-center justify-between gap-3">
-                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${getStatusColor(movie.status)}`}>
-                    {movie.status}
+                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${getStatusColor(getStatus(movie))}`}>
+                    {getStatus(movie)}
                   </span>
                   <div className="flex items-center gap-1.5 text-[11px] font-black text-gray-400 uppercase">
                     <Clock className="w-4 h-4" />
-                    {movie.duration || "--"} MIN
+                    {movie.runTime || "--"} MIN
                   </div>
                 </div>
 

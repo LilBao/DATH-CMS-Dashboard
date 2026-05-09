@@ -13,6 +13,12 @@ const nextConfig = {
         hostname: 'i.pravatar.cc',
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        port: '',
+        pathname: '/**',
       }
     ],
   },

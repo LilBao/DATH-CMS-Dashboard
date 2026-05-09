@@ -23,7 +23,7 @@ export default function RoleGuard({ children, allowedRoles, fallback = null }: R
     return fallback;
   }
 
-  const userRole = user?.role || user?.roles?.[0];
+  const userRole = user?.role || "STAFF";
 
   const hasAccess = allowedRoles.includes(userRole);
 

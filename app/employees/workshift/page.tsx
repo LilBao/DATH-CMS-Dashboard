@@ -3,24 +3,21 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, Clock, User, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { 
-  startOfWeek, 
-  addDays, 
-  format, 
-  isSameDay, 
-  parseISO 
-} from 'date-fns';
-import { shiftService, Shift } from '@/services/shiftService';
-import { employeeService, Employee } from '@/services/employeeService';
+import { shiftService, WorkShift } from '@/services/shiftService';
+import { employeeService, EmployeeResponse } from '@/services/employeeService';
+import { branchService, BranchResponse } from '@/services/branchService';
+import { useAuthStore } from '@/stores/authStore';
+import { startOfWeek, addDays, format, isSameDay, parseISO } from 'date-fns';
+import { ConfirmModal } from '@/app/components/ui/confirm-modal';
 
 // Tạo mảng 7 ngày trong tuần dựa trên ngày hiện tại
 const generateWorkWeek = (baseDate: Date) => {
-  const start = startOfWeek(baseDate, { weekStartsOn: 1 }); // Bắt đầu từ thứ 2
+  const start = startOfWeek(baseDate, { weekStartsOn: 1 });
   return Array.from({ length: 7 }, (_, i) => {
     const date = addDays(start, i);
     return {
-      day: format(date, 'EEE'), // Mon, Tue...
-      date: format(date, 'dd'), // 01, 02...
+      day: format(date, 'EEE'),
+      date: format(date, 'dd'),
       fullDate: format(date, 'yyyy-MM-dd'),
       isToday: isSameDay(date, new Date())
     };
@@ -35,34 +32,66 @@ const timeToMinutes = (timeStr: string) => {
   return h * 60 + m;
 };
 
+const areShiftsOverlapping = (s1: WorkShift, s2: WorkShift) => {
+  const start1 = timeToMinutes(s1.startTime);
+  const end1 = timeToMinutes(s1.endTime);
+  const start2 = timeToMinutes(s2.startTime);
+  const end2 = timeToMinutes(s2.endTime);
+  return start1 < end2 && start2 < end1;
+};
+
 export default function ShiftPage() {
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [dbEmployees, setDbEmployees] = useState<Employee[]>([]);
+  const [shifts, setShifts] = useState<WorkShift[]>([]);
+  const [dbEmployees, setDbEmployees] = useState<EmployeeResponse[]>([]);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState('Grand Plaza');
-  
+  const [selectedBranchId, setSelectedBranchId] = useState<number | ''>('');
+
+  const { user } = useAuthStore();
+  const rawRole = user?.role || "";
+  const isManager = rawRole.toUpperCase() === 'MANAGER' || rawRole.toUpperCase() === 'ROLE_MANAGER';
+  const managerBranchId = user?.branchId;
+
+  useEffect(() => {
+    console.log("Workshift - Role:", rawRole);
+    console.log("Workshift - Branch ID:", managerBranchId);
+  }, [rawRole, managerBranchId]);
+
   // State quản lý ngày hiển thị (Mặc định là tuần hiện tại)
   const [currentDate] = useState(new Date());
   const daysOfWeek = useMemo(() => generateWorkWeek(currentDate), [currentDate]);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [selectedShift, setSelectedShift] = useState<WorkShift | null>(null);
+
+  // State cho Confirm Delete
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
-  const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
-  const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Load dữ liệu thực từ Backend
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [shiftRes, empRes] = await Promise.all([
-        shiftService.getShifts(),
-        employeeService.getAll()
+      const [shiftRes, empRes, branchRes] = await Promise.all([
+        (isManager && managerBranchId !== undefined && managerBranchId !== null) 
+          ? shiftService.getByBranch(managerBranchId)
+          : shiftService.getAll(),
+        (isManager && managerBranchId !== undefined && managerBranchId !== null)
+          ? employeeService.getByBranch(managerBranchId)
+          : employeeService.getAll(),
+        branchService.getAll()
       ]);
-      setShifts(shiftRes);
+      setShifts(Array.isArray(shiftRes) ? shiftRes : []);
       setDbEmployees(empRes);
+      setBranches(branchRes);
+
+      if (isManager && (managerBranchId !== undefined && managerBranchId !== null)) {
+        setSelectedBranchId(managerBranchId);
+      } else if (branchRes.length > 0 && selectedBranchId === '') {
+        setSelectedBranchId(branchRes[0].branchId);
+      }
     } catch (err) {
       toast.error('Không thể kết nối với máy chủ API');
     } finally {
@@ -74,21 +103,45 @@ export default function ShiftPage() {
     loadData();
   }, []);
 
-  const filteredShifts = useMemo(() => {
-    return shifts.filter(s => s.branch === selectedBranch);
-  }, [shifts, selectedBranch]);
+  // Reload shifts when branch changes (for Admin)
+  useEffect(() => {
+    if (!isManager && selectedBranchId !== '' && selectedBranchId !== undefined) {
+      const reloadShifts = async () => {
+        try {
+          const shiftRes = await shiftService.getByBranch(selectedBranchId as number);
+          setShifts(Array.isArray(shiftRes) ? shiftRes : []);
+        } catch (e) {
+          console.error("Failed to reload shifts for branch:", selectedBranchId);
+        }
+      };
+      reloadShifts();
+    }
+  }, [selectedBranchId, isManager]);
 
-  const filteredEmployees = dbEmployees.filter(emp => 
-    emp.name.toLowerCase().includes(employeeSearchQuery.toLowerCase())
+  const filteredShifts = useMemo(() => {
+    return shifts; // Backend trả về toàn bộ ca, UI sẽ tự phân bổ theo wDate
+  }, [shifts]);
+
+  const filteredEmployees = dbEmployees.filter(emp =>
+    emp.eName.toLowerCase().includes(employeeSearchQuery.toLowerCase())
   );
 
-  const getStyleForShift = (startTime: string, endTime: string) => {
+  const getStyleForShift = (startTime: string, endTime: string, colIndex: number, totalCols: number) => {
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
-    const gridStartMins = 8 * 60; 
+    const gridStartMins = 8 * 60;
     const topPixel = ((startMins - gridStartMins) / 60) * 64;
     const heightPixel = ((endMins - startMins) / 60) * 64;
-    return { top: `${topPixel}px`, height: `${heightPixel}px` };
+    
+    const width = 100 / totalCols;
+    const left = colIndex * width;
+
+    return { 
+      top: `${topPixel}px`, 
+      height: `${heightPixel}px`,
+      left: `${left}%`,
+      width: `calc(${width}% - 2px)`
+    };
   };
 
   const getThemeClasses = (theme: string) => {
@@ -104,38 +157,73 @@ export default function ShiftPage() {
     e.preventDefault();
     setIsSaving(true);
     const formData = new FormData(e.currentTarget);
-    
-    const payload = {
-      employeeName: employeeSearchQuery,
-      role: formData.get('role') as string,
-      date: formData.get('date') as string,
-      startTime: formData.get('startTime') as string,
-      endTime: formData.get('endTime') as string,
-      branch: selectedBranch,
-      theme: selectedShift?.theme || (['blue', 'mint', 'lavender', 'orange'][Math.floor(Math.random() * 4)] as "blue" | "mint" | "lavender" | "orange")
+
+    const dateStr = formData.get('date') as string;
+    const dateObj = new Date(dateStr);
+    const jsDay = dateObj.getDay();
+    const wDate = jsDay === 0 ? 7 : jsDay; // 1 (Mon) -> 7 (Sun)
+
+    const payload: WorkShift = {
+      startTime: formData.get('startTime') as string + ":00",
+      endTime: formData.get('endTime') as string + ":00",
+      wDate: wDate,
+      work: `${employeeSearchQuery} (${formData.get('role')})` // Tạm thời lưu thông tin vào 'work'
     };
 
     try {
-      await shiftService.saveShift(payload, selectedShift?.id);
+      if (selectedShift) {
+        await shiftService.update(selectedShift.startTime, selectedShift.endTime, selectedShift.wDate, payload);
+      } else {
+        // Sử dụng API phân ca cho nhân viên cụ thể
+        const targetEmployee = dbEmployees.find(e => e.eUserId === employeeSearchQuery);
+        if (targetEmployee) {
+          await employeeService.assignWorkShifts(targetEmployee.eUserId, [payload]);
+        } else {
+          // Fallback nếu không chọn nhân viên
+          await shiftService.create(payload);
+        }
+      }
       toast.success("Lịch làm việc đã được cập nhật!");
       await loadData();
       setIsDrawerOpen(false);
-    } catch (err) {
-      toast.error('Lỗi khi lưu ca làm việc');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Lỗi khi lưu ca làm việc';
+      toast.error(errorMsg);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDeleteShift = async () => {
-    if (!selectedShift || !confirm("Xóa ca làm này khỏi lịch?")) return;
+  const handleDeleteShift = () => {
+    if (!selectedShift) return;
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedShift) return;
     try {
-      await shiftService.deleteShift(selectedShift.id);
-      setShifts(prev => prev.filter(s => s.id !== selectedShift.id));
-      toast.success("Đã xóa ca làm.");
+      // Nếu có nhân viên được chọn (employeeSearchQuery đang giữ ID), thực hiện unassign
+      if (employeeSearchQuery) {
+        await employeeService.unassignWorkShift(
+          employeeSearchQuery, 
+          selectedShift.startTime, 
+          selectedShift.endTime, 
+          selectedShift.wDate
+        );
+        toast.success("Đã gỡ nhân viên khỏi ca làm.");
+      } else {
+        // Nếu không có nhân viên cụ thể, xóa ca làm chung (nếu Backend cho phép)
+        await shiftService.delete(selectedShift.startTime, selectedShift.endTime, selectedShift.wDate);
+        toast.success("Đã xóa ca làm.");
+      }
+      
+      await loadData();
       setIsDrawerOpen(false);
-    } catch (err) {
-      toast.error('Không thể xóa dữ liệu');
+      setIsConfirmOpen(false);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Không thể thực hiện yêu cầu xóa/gỡ ca';
+      toast.error(errorMsg);
+      throw err;
     }
   };
 
@@ -143,25 +231,33 @@ export default function ShiftPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto min-h-screen flex flex-col pb-10">
-      
+
       {/* Header */}
       <div className="flex items-end justify-between mb-8">
         <div>
           <h1 className="text-[36px] font-black text-[#2d3337] tracking-tight uppercase">Shift Planner</h1>
           <p className="text-sm text-[#596063] font-bold uppercase tracking-widest">
-            {format(currentDate, 'MMMM yyyy')} &bull; {selectedBranch}
+            {format(currentDate, 'MMMM yyyy')} &bull; {branches.find(b => b.branchId === selectedBranchId)?.bName}
           </p>
         </div>
         <div className="flex gap-3">
-          <select 
-            value={selectedBranch} 
-            onChange={e => setSelectedBranch(e.target.value)}
-            className="bg-white border border-gray-100 px-4 py-3 rounded-xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="Grand Plaza">Grand Plaza</option>
-            <option value="Starlight">Starlight Cinema</option>
-          </select>
-          <button 
+          {!isManager && (
+            <select
+              value={selectedBranchId}
+              onChange={e => setSelectedBranchId(Number(e.target.value))}
+              className="bg-white border border-gray-100 px-4 py-3 rounded-xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {branches.map(br => (
+                <option key={br.branchId} value={br.branchId}>{br.bName}</option>
+              ))}
+            </select>
+          )}
+          {isManager && (
+            <div className="bg-indigo-50 px-4 py-3 rounded-xl text-sm font-bold text-indigo-600 border border-indigo-100 flex items-center">
+              {branches.find(b => b.branchId === selectedBranchId)?.bName}
+            </div>
+          )}
+          <button
             onClick={() => { setSelectedShift(null); setEmployeeSearchQuery(''); setIsDrawerOpen(true); }}
             className="bg-[#4a4bd7] hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2"
           >
@@ -199,22 +295,56 @@ export default function ShiftPage() {
             </div>
 
             <div className="flex-1 relative flex">
-              {daysOfWeek.map((d, i) => (
-                <div key={i} className="flex-1 border-r border-gray-50 relative group">
-                  {filteredShifts.filter(s => s.date === d.fullDate).map((shift) => (
-                    <div 
-                      key={shift.id} 
-                      style={getStyleForShift(shift.startTime, shift.endTime)}
-                      onClick={() => { setSelectedShift(shift); setEmployeeSearchQuery(shift.employeeName); setIsDrawerOpen(true); }}
-                      className={`absolute left-1 right-1 rounded-xl p-3 cursor-pointer transition-all flex flex-col gap-1 overflow-hidden z-10 shadow-sm border ${getThemeClasses(shift.theme)}`}
-                    >
-                      <p className="font-black text-xs leading-tight truncate">{shift.employeeName}</p>
-                      <p className="font-bold text-[9px] opacity-70">{shift.startTime} - {shift.endTime}</p>
-                      <p className="mt-auto text-[8px] font-black uppercase tracking-widest bg-white/50 w-fit px-1.5 py-0.5 rounded">{shift.role}</p>
-                    </div>
-                  ))}
-                </div>
-              ))}
+              {daysOfWeek.map((d, i) => {
+                const jsDay = new Date(d.fullDate).getDay();
+                const wDate = jsDay === 0 ? 7 : jsDay;
+                return (
+                  <div key={i} className="flex-1 border-r border-gray-50 relative group">
+                    {(() => {
+                      const dayShifts = filteredShifts.filter(s => s.wDate === wDate);
+                      const sorted = [...dayShifts].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                      const columns: WorkShift[][] = [];
+
+                      sorted.forEach(shift => {
+                        let placed = false;
+                        for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+                          const lastInCol = columns[colIdx][columns[colIdx].length - 1];
+                          if (!areShiftsOverlapping(lastInCol, shift)) {
+                            columns[colIdx].push(shift);
+                            placed = true;
+                            break;
+                          }
+                        }
+                        if (!placed) columns.push([shift]);
+                      });
+
+                      return columns.flatMap((col, colIndex) => 
+                        col.map((shift, idx) => (
+                          <div
+                            key={`${shift.wDate}-${shift.startTime}-${colIndex}-${idx}`}
+                            style={getStyleForShift(shift.startTime, shift.endTime, colIndex, columns.length)}
+                            onClick={() => { 
+                              setSelectedShift(shift); 
+                              const empInfo = shift.work.split(' (')[0];
+                              const targetEmp = dbEmployees.find(e => e.eName === empInfo);
+                              setEmployeeSearchQuery(targetEmp?.eUserId || ''); 
+                              setIsDrawerOpen(true); 
+                            }}
+                            className={`absolute rounded-xl p-3 cursor-pointer transition-all flex flex-col gap-1 overflow-hidden z-10 shadow-sm border ${getThemeClasses('blue')}`}
+                          >
+                            <p className="font-black text-[10px] leading-tight truncate">
+                              {shift.employees && shift.employees.length > 0 
+                                ? shift.employees.map(e => e.eName).join(', ')
+                                : shift.work}
+                            </p>
+                            <p className="font-bold text-[9px] opacity-70">{shift.startTime.substring(0,5)} - {shift.endTime.substring(0,5)}</p>
+                          </div>
+                        ))
+                      );
+                    })()}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -232,59 +362,61 @@ export default function ShiftPage() {
 
             <form onSubmit={handleSaveForm} className="flex-1 overflow-y-auto p-8 space-y-6">
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Tìm nhân viên</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Chọn nhân viên</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
-                  <input 
-                    type="text" 
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 z-10" />
+                  <select
                     value={employeeSearchQuery}
-                    onChange={(e) => { setEmployeeSearchQuery(e.target.value); setIsEmployeeDropdownOpen(true); }}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl outline-none text-sm font-bold focus:ring-2 focus:ring-indigo-500" 
-                    placeholder="Gõ tên để tìm..." 
+                    onChange={(e) => setEmployeeSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-4 bg-gray-50 border-none rounded-2xl outline-none text-sm font-bold focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
                     required
-                  />
-                  {isEmployeeDropdownOpen && employeeSearchQuery && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto">
-                      {filteredEmployees.map(emp => (
-                        <div key={emp.id} onClick={() => { setEmployeeSearchQuery(emp.name); setIsEmployeeDropdownOpen(false); }} className="p-3 hover:bg-indigo-50 cursor-pointer font-bold text-sm text-gray-700">
-                          {emp.name} <span className="text-[10px] text-gray-400 ml-2">({emp.role})</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  >
+                    <option value="">-- Chọn nhân viên --</option>
+                    {dbEmployees.map((emp) => (
+                      <option key={emp.eUserId} value={emp.eUserId}>
+                        {emp.eName} ({emp.userType})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Vị trí</label>
-                  <select name="role" defaultValue={selectedShift?.role || "Staff"} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none">
-                    <option value="Manager">Manager</option>
-                    <option value="Projectionist">Projectionist</option>
-                    <option value="Cashier">Cashier</option>
-                    <option value="Staff">Staff</option>
+                  <select name="role" defaultValue={selectedShift?.work.split(' (')[1]?.replace(')', '') || "STAFF"} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none uppercase">
+                    <option value="STAFF">Staff</option>
+                    <option value="MANAGER">Manager</option>
+                    <option value="ADMIN">Admin</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Ngày làm việc</label>
-                  <input name="date" type="date" defaultValue={selectedShift?.date || format(new Date(), 'yyyy-MM-dd')} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none" required />
+                  <input name="date" type="date" defaultValue={
+                    selectedShift 
+                      ? daysOfWeek.find(d => {
+                          const jsDay = new Date(d.fullDate).getDay();
+                          return (jsDay === 0 ? 7 : jsDay) === selectedShift.wDate;
+                        })?.fullDate 
+                      : format(new Date(), 'yyyy-MM-dd')
+                  } className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none" required />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Bắt đầu</label>
-                  <input name="startTime" type="time" defaultValue={selectedShift?.startTime || "09:00"} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none" required />
+                  <input name="startTime" type="time" defaultValue={selectedShift?.startTime.substring(0, 5) || "09:00"} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none" required />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Kết thúc</label>
-                  <input name="endTime" type="time" defaultValue={selectedShift?.endTime || "17:00"} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none" required />
+                  <input name="endTime" type="time" defaultValue={selectedShift?.endTime.substring(0, 5) || "17:00"} className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold text-sm outline-none" required />
                 </div>
               </div>
 
               <div className="pt-8 space-y-3">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={isSaving}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
                 >
@@ -298,6 +430,13 @@ export default function ShiftPage() {
           </div>
         </>
       )}
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Xác nhận xóa ca làm"
+        description={`Bạn có chắc chắn muốn gỡ ca làm này (${selectedShift?.startTime} - ${selectedShift?.endTime}) khỏi lịch không?`}
+      />
     </div>
   );
 }

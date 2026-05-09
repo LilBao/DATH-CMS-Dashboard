@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Movie } from "@/services/movieService";
+import { MovieResponse, MovieRequest } from "@/services/movieService";
 import { fileService } from "@/services/fileService";
 import { X, Upload, Loader2, Film, Clock, Calendar } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/movie_dialog";
@@ -12,16 +12,15 @@ interface MovieFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any) => Promise<void>;
-  initialData: Movie | null;
-  existingMovies: Movie[];
+  initialData: MovieResponse | null;
+  existingMovies: MovieResponse[];
 }
 
 export default function MovieFormModal({ isOpen, onClose, onSave, initialData }: MovieFormModalProps) {
-  const [formData, setFormData] = useState<Partial<Movie>>({
+  const [formData, setFormData] = useState<any>({
     title: "",
     duration: 0,
     genre: "",
-    status: "Now Showing",
     posterUrl: "",
     releaseDate: "",
     description: "",
@@ -32,13 +31,20 @@ export default function MovieFormModal({ isOpen, onClose, onSave, initialData }:
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
+      setFormData({
+        title: initialData.mName,
+        duration: initialData.runTime,
+        genre: initialData.genres?.join(", ") || "",
+        posterUrl: initialData.posterUrl || "",
+        releaseDate: initialData.releaseDate || "",
+        description: initialData.descript || "",
+        cast: initialData.actors?.join(", ") || "",
+      });
     } else {
       setFormData({
         title: "",
         duration: 0,
         genre: "",
-        status: "Now Showing",
         posterUrl: "",
         releaseDate: "",
         description: "",
@@ -52,7 +58,18 @@ export default function MovieFormModal({ isOpen, onClose, onSave, initialData }:
     e.preventDefault();
     setIsSaving(true);
     try {
-      await onSave(formData);
+      const requestData: MovieRequest = {
+        mName: formData.title,
+        descript: formData.description,
+        runTime: formData.duration,
+        releaseDate: formData.releaseDate || new Date().toISOString().split("T")[0],
+        closingDate: formData.releaseDate || new Date().toISOString().split("T")[0],
+        ageRating: "T13",
+        posterUrl: formData.posterUrl,
+        genreIds: formData.genre.split(",").map((s: string) => s.trim()).filter(Boolean),
+        actorIds: formData.cast.split(",").map((s: string) => s.trim()).filter(Boolean),
+      };
+      await onSave(requestData);
       onClose();
     } catch (error) {
       toast.error("Lỗi khi lưu thông tin.");
@@ -75,11 +92,12 @@ export default function MovieFormModal({ isOpen, onClose, onSave, initialData }:
           {/* Cột trái: Upload Poster */}
           <div className="space-y-4">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Poster phim</label>
-            <FileUpload 
+            <FileUpload
               folderName="movies"
               initialPreviewUrl={formData.posterUrl}
-              onUploadSuccess={(url) => setFormData(prev => ({ ...prev, posterUrl: url }))}
+              onUploadSuccess={(url) => setFormData((prev: any) => ({ ...prev, posterUrl: url }))}
               className="aspect-[2/3] rounded-3xl"
+              aspect="none"
             />
           </div>
 
@@ -108,16 +126,12 @@ export default function MovieFormModal({ isOpen, onClose, onSave, initialData }:
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Trạng thái</label>
-                <select
-                  value={formData.status}
-                  onChange={e => setFormData({ ...formData, status: e.target.value as any })}
-                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none"
-                >
-                  <option value="Now Showing">Đang chiếu</option>
-                  <option value="Coming Soon">Sắp chiếu</option>
-                  <option value="Ended">Đã kết thúc</option>
-                </select>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Trạng thái (Tự động)</label>
+                <input
+                  disabled
+                  value="Tính theo ngày chiếu"
+                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-400 outline-none cursor-not-allowed"
+                />
               </div>
             </div>
 

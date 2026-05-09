@@ -1,31 +1,32 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { 
+import {
   ChevronRight, Save, Trash2, Building2, Loader2, MapPin, Phone, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { branchService, Branch } from '@/services/branchService';
+import { branchService, BranchResponse, BranchRequest } from '@/services/branchService';
 import BranchAddModal from '../components/BranchAddModal';
+import { ConfirmModal } from '../components/ui/confirm-modal';
 
 export default function BranchesPage() {
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<BranchResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  // Fetch dữ liệu từ JSON Server (Cổng 8080)
+  // State cho Confirm Delete
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
   const loadBranches = async () => {
     try {
       setIsLoading(true);
       const data = await branchService.getAll();
-      const rawData = Array.isArray(data) ? data : data.data ?? [];
-      setBranches(rawData);
-      
-      // Mặc định chọn chi nhánh đầu tiên nếu chưa có chi nhánh nào được chọn
-      if (rawData.length > 0 && !selectedBranch) {
-        setSelectedBranch(rawData[0]);
+      setBranches(data);
+
+      if (data.length > 0 && !selectedBranch) {
+        setSelectedBranch(data[0]);
       }
     } catch (error) {
       toast.error("Không thể nạp danh sách chi nhánh từ máy chủ.");
@@ -45,11 +46,17 @@ export default function BranchesPage() {
 
     setIsUpdating(true);
     try {
-      await branchService.update(selectedBranch.id, selectedBranch);
-      toast.success(`Đã cập nhật chi nhánh: ${selectedBranch.name}`);
-      
+      const updateData: BranchRequest = {
+        bName: selectedBranch.bName,
+        bAddress: selectedBranch.bAddress,
+        phoneNumbers: selectedBranch.phoneNumbers,
+        managerId: selectedBranch.managerId,
+      };
+      const updated = await branchService.update(selectedBranch.branchId, updateData);
+      toast.success(`Đã cập nhật chi nhánh: ${selectedBranch.bName}`);
+
       // Cập nhật lại danh sách local để đồng bộ UI
-      setBranches(prev => prev.map(b => b.id === selectedBranch.id ? selectedBranch : b));
+      setBranches(prev => prev.map(b => b.branchId === selectedBranch.branchId ? { ...selectedBranch, ...updated } : b));
     } catch (error) {
       toast.error("Lỗi khi cập nhật thông tin lên hệ thống.");
     } finally {
@@ -58,34 +65,29 @@ export default function BranchesPage() {
   };
 
   // Xử lý Xóa chi nhánh
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedBranch) return;
+    setIsConfirmOpen(true);
+  };
 
-    // Hiển thị hộp thoại xác nhận
-    const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa chi nhánh ${selectedBranch.name}? Thao tác này không thể hoàn tác.`);
-    
-    if (confirmDelete) {
-      try {
-        setIsUpdating(true); // Dùng loading spinner trong lúc xóa
-        await branchService.delete(selectedBranch.id);
-        
-        toast.success(`Đã xóa chi nhánh ${selectedBranch.name}`);
-        
-        // Cập nhật lại danh sách: Loại bỏ chi nhánh đã xóa
-        const updatedBranches = branches.filter(b => b.id !== selectedBranch.id);
-        setBranches(updatedBranches);
-        
-        // Chọn lại chi nhánh đầu tiên trong danh sách mới
-        if (updatedBranches.length > 0) {
-          setSelectedBranch(updatedBranches[0]);
-        } else {
-          setSelectedBranch(null);
-        }
-      } catch (error) {
-        toast.error("Không thể xóa chi nhánh. Vui lòng thử lại.");
-      } finally {
-        setIsUpdating(false);
+  const confirmDelete = async () => {
+    if (!selectedBranch) return;
+    try {
+      setIsUpdating(true);
+      await branchService.delete(selectedBranch.branchId);
+      toast.success(`Đã xóa chi nhánh ${selectedBranch.bName}`);
+      const updatedBranches = branches.filter(b => b.branchId !== selectedBranch.branchId);
+      setBranches(updatedBranches);
+      if (updatedBranches.length > 0) {
+        setSelectedBranch(updatedBranches[0]);
+      } else {
+        setSelectedBranch(null);
       }
+    } catch (error) {
+      toast.error("Không thể xóa chi nhánh. Vui lòng thử lại.");
+      throw error;
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -99,7 +101,7 @@ export default function BranchesPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto min-h-screen flex flex-col pb-12 px-4 relative">
-      
+
       {/* Header Section */}
       <div className="flex items-end justify-between mb-10 pt-8">
         <div>
@@ -108,7 +110,7 @@ export default function BranchesPage() {
           <p className="text-gray-500 font-medium mt-1">Quản lý mạng lưới chi nhánh rạp phim trên toàn quốc.</p>
         </div>
 
-        <button 
+        <button
           onClick={() => setIsAddModalOpen(true)}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 transition-all flex items-center gap-3 uppercase tracking-widest text-xs"
         >
@@ -132,28 +134,26 @@ export default function BranchesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {branches.length > 0 ? branches.map((branch) => (
-                <tr 
-                  key={branch.id} 
+              {branches.length > 0 ? branches.map((branch, i) => (
+                <tr
+                  key={branch.branchId || i}
                   onClick={() => setSelectedBranch(branch)}
-                  className={`hover:bg-indigo-50/30 cursor-pointer transition-all ${selectedBranch?.id === branch.id ? 'bg-indigo-50/50' : ''}`}
+                  className={`hover:bg-indigo-50/30 cursor-pointer transition-all ${selectedBranch?.branchId === branch.branchId ? 'bg-indigo-50/50' : ''}`}
                 >
-                  <td className="px-8 py-5 text-sm font-bold text-indigo-600 text-center">#{branch.id}</td>
+                  <td className="px-8 py-5 text-sm font-bold text-indigo-600 text-center">#{branch.branchId}</td>
                   <td className="px-8 py-5">
                     <div>
-                      <p className="text-sm font-black text-gray-800 leading-tight uppercase tracking-tighter">{branch.name}</p>
-                      <p className="text-[11px] text-gray-400 font-bold mt-0.5 uppercase tracking-tighter">{branch.manager}</p>
+                      <p className="text-sm font-black text-gray-800 leading-tight uppercase tracking-tighter">{branch.bName}</p>
+                      <p className="text-[11px] text-gray-400 font-bold mt-0.5 uppercase tracking-tighter">{branch.managerName || 'Chưa có quản lý'}</p>
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                      branch.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {branch.status}
+                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                      Active
                     </span>
                   </td>
                   <td className="px-8 py-5 text-right">
-                    <ChevronRight className={`w-5 h-5 transition-transform ${selectedBranch?.id === branch.id ? 'translate-x-1 text-indigo-500' : 'text-gray-300'}`} />
+                    <ChevronRight className={`w-5 h-5 transition-transform ${selectedBranch?.branchId === branch.branchId ? 'translate-x-1 text-indigo-500' : 'text-gray-300'}`} />
                   </td>
                 </tr>
               )) : (
@@ -182,20 +182,20 @@ export default function BranchesPage() {
               <form className="space-y-6" onSubmit={handleUpdate}>
                 <div className="space-y-2">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Tên chi nhánh</label>
-                  <input 
+                  <input
                     type="text" required
-                    value={selectedBranch.name} 
-                    onChange={(e) => setSelectedBranch({...selectedBranch, name: e.target.value})}
+                    value={selectedBranch.bName}
+                    onChange={(e) => setSelectedBranch({ ...selectedBranch, bName: e.target.value })}
                     className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Địa chỉ vật lý</label>
-                  <textarea 
+                  <textarea
                     rows={3} required
-                    value={selectedBranch.address}
-                    onChange={(e) => setSelectedBranch({...selectedBranch, address: e.target.value})}
+                    value={selectedBranch.bAddress}
+                    onChange={(e) => setSelectedBranch({ ...selectedBranch, bAddress: e.target.value })}
                     className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-all"
                   />
                 </div>
@@ -203,24 +203,22 @@ export default function BranchesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Trạng thái</label>
-                    <select 
-                      value={selectedBranch.status}
-                      onChange={(e) => setSelectedBranch({...selectedBranch, status: e.target.value as any})}
-                      className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-black text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    <select
+                      value="Active"
+                      disabled
+                      className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-black text-gray-800 outline-none opacity-60 cursor-not-allowed"
                     >
                       <option value="Active">Active</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Closed">Closed</option>
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Liên hệ (SĐT)</label>
                     <div className="relative">
                       <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
-                      <input 
+                      <input
                         type="text" required
-                        value={selectedBranch.phone}
-                        onChange={(e) => setSelectedBranch({...selectedBranch, phone: e.target.value})}
+                        value={selectedBranch.phoneNumbers?.[0] || ''}
+                        onChange={(e) => setSelectedBranch({ ...selectedBranch, phoneNumbers: [e.target.value] })}
                         className="w-full bg-gray-50 border-none rounded-2xl pl-12 pr-5 py-4 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       />
                     </div>
@@ -229,24 +227,24 @@ export default function BranchesPage() {
 
                 <div className="space-y-2">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quản lý phụ trách</label>
-                  <input 
+                  <input
                     type="text" required
-                    value={selectedBranch.manager}
-                    onChange={(e) => setSelectedBranch({...selectedBranch, manager: e.target.value})}
+                    value={selectedBranch.managerName || ''}
+                    onChange={(e) => setSelectedBranch({ ...selectedBranch, managerName: e.target.value })}
                     className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
                 <div className="flex gap-4 pt-6">
-                  <button 
+                  <button
                     type="submit" disabled={isUpdating}
                     className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs disabled:opacity-50"
                   >
                     {isUpdating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                     Lưu thay đổi
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={handleDelete}
                     disabled={isUpdating}
                     className="flex-1 p-4 bg-rose-50 text-rose-600 rounded-2xl hover:bg-rose-100 border border-transparent hover:border-rose-200 transition-all disabled:opacity-50"
@@ -266,16 +264,23 @@ export default function BranchesPage() {
       </div>
 
       {/* Modal Add Branch */}
-      <BranchAddModal 
-        isOpen={isAddModalOpen} 
-        onClose={() => setIsAddModalOpen(false)} 
+      <BranchAddModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
         existingBranches={branches}
         onSuccess={(newBranch) => {
           setBranches(prev => [...prev, newBranch]);
           setSelectedBranch(newBranch);
-        }} 
+        }}
       />
 
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Xác nhận xóa chi nhánh"
+        description={`Bạn có chắc chắn muốn xóa chi nhánh ${selectedBranch?.bName}? Toàn bộ dữ liệu liên quan đến chi nhánh này sẽ bị ảnh hưởng.`}
+      />
     </div>
   );
 }

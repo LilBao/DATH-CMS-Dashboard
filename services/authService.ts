@@ -15,6 +15,19 @@ export interface LoginPayload {
   idToken?: string;
 }
 
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+}
+
+export interface UpdateProfileRequest {
+  name: string;
+  sex?: string;
+  birthday?: string;
+  phoneNumber?: string;
+  avatarUrl?: string;
+}
+
 // Bọc các api/service tuỳ chỉnh theo các endpoints
 export const authService = {
   // Đăng ký mới
@@ -35,9 +48,21 @@ export const authService = {
     return response.data;
   },
   
-  // Lấy thông tin user hiện tại (ví dụ: dùng sau login)
+  // Lấy thông tin user hiện tại
   getMe: async () => {
     const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  // Đổi mật khẩu
+  changePassword: async (data: ChangePasswordRequest) => {
+    const response = await api.post('/auth/change-password', data);
+    return response.data;
+  },
+
+  // Cập nhật profile
+  updateProfile: async (data: UpdateProfileRequest) => {
+    const response = await api.put('/auth/profile', data);
     return response.data;
   }
 };

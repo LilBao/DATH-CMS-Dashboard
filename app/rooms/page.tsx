@@ -3,34 +3,45 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Plus, RotateCcw, Save, X, ChevronDown, Building2, Loader2, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
-import { roomService, Room, Seat } from '@/services/roomService';
-import { branchService } from '@/services/branchService';
+import { roomService, ScreenRoomResponse, SeatRequest } from '@/services/roomService';
+import { branchService, BranchResponse } from '@/services/branchService';
+import { useAuthStore } from '@/stores/authStore';
 
 const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O'];
 
+type UISeat = SeatRequest & { _id: string; _status: 'available' | 'disabled' | 'selected' };
+
 // Helper tạo ghế mặc định
-const generateSeatsByCapacity = (capacity: number): Seat[] => {
-  const seats: Seat[] = [];
+const generateSeatsByCapacity = (capacity: number, branchId: number, roomId: number): UISeat[] => {
+  const seats: UISeat[] = [];
   const colsPerRow = 10;
   for (let i = 0; i < capacity; i++) {
     const rowIndex = Math.floor(i / colsPerRow);
     const colIndex = (i % colsPerRow) + 1;
     const rowLabel = rows[rowIndex] || `R${rowIndex}`;
-    seats.push({ id: `${rowLabel}${colIndex}`, row: rowLabel, col: colIndex, status: 'available' });
+    seats.push({ 
+      branchId, roomId, sRow: rowIndex + 1, sColumn: colIndex, 
+      sType: 1, sStatus: true,
+      _id: `${rowLabel}${colIndex}`, _status: 'available' 
+    });
   }
   return seats;
 };
 
 export default function RoomsSeatsPage() {
   const [branches, setBranches] = useState<any[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [activeBranchId, setActiveBranchId] = useState<string>('');
-  const [activeRoomId, setActiveRoomId] = useState<string>('');
-  const [seats, setSeats] = useState<Seat[]>([]);
+  const [rooms, setRooms] = useState<ScreenRoomResponse[]>([]);
+  const [activeBranchId, setActiveBranchId] = useState<number | ''>('');
+  const [activeRoomId, setActiveRoomId] = useState<number | ''>('');
+  const [seats, setSeats] = useState<UISeat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isBulkMode, setIsBulkMode] = useState(true);
   const [isNewRoomDialogOpen, setIsNewRoomDialogOpen] = useState(false);
+
+  const { user } = useAuthStore();
+  const isManager = user?.role === 'MANAGER';
+  const managerBranchId = user?.branchId;
 
   // Load Data
   useEffect(() => {
@@ -41,12 +52,17 @@ export default function RoomsSeatsPage() {
           roomService.getAll(),
           branchService.getAll()
         ]);
-        const rawRooms = Array.isArray(roomData) ? roomData : roomData.data ?? [];
-        const rawBranches = Array.isArray(branchData) ? branchData : branchData.data ?? [];
+        const rawRooms = Array.isArray(roomData) ? roomData : [];
+        const rawBranches = Array.isArray(branchData) ? branchData : [];
         
         setRooms(rawRooms);
         setBranches(rawBranches);
-        if (rawBranches.length > 0) setActiveBranchId(rawBranches[0].id);
+        
+        if (isManager && (managerBranchId !== undefined && managerBranchId !== null)) {
+          setActiveBranchId(managerBranchId);
+        } else if (rawBranches.length > 0) {
+          setActiveBranchId(rawBranches[0].branchId);
+        }
       } catch (error) {
         toast.error("Lỗi kết nối hệ thống dữ liệu phòng.");
       } finally {
@@ -61,25 +77,61 @@ export default function RoomsSeatsPage() {
   [rooms, activeBranchId]);
 
   useEffect(() => {
-    if (filteredRooms.length > 0) setActiveRoomId(filteredRooms[0].id);
+    if (filteredRooms.length > 0) setActiveRoomId(filteredRooms[0].roomId);
     else { setActiveRoomId(''); setSeats([]); }
   }, [activeBranchId, filteredRooms]);
 
   // Load Layout của phòng được chọn
   useEffect(() => {
-    const activeRoom = rooms.find(r => r.id === activeRoomId);
-    if (activeRoom) {
-      if (activeRoom.layout && activeRoom.layout.length > 0) setSeats(activeRoom.layout);
-      else setSeats(generateSeatsByCapacity(activeRoom.capacity));
-    }
-  }, [activeRoomId, rooms]);
+    const loadSeats = async () => {
+      const activeRoom = rooms.find(r => r.roomId === activeRoomId);
+      if (activeRoom && activeBranchId !== '') {
+        try {
+          const dbSeats = await roomService.getSeats(activeBranchId as number, activeRoom.roomId);
+          if (dbSeats && dbSeats.length > 0) {
+            // Chuyển đổi SeatResponse sang UISeat
+            const uiSeats: UISeat[] = dbSeats.map(s => {
+              const rowLabel = rows[s.sRow - 1] || `R${s.sRow}`;
+              let status: 'available' | 'disabled' | 'selected' = 'available';
+              if (!s.sStatus) status = 'disabled';
+              else if (s.sType === 2) status = 'selected'; // VIP
+              else if (s.sType === 3) status = 'selected'; // Sweetbox (Dùng tạm selected UI)
+              
+              return {
+                ...s,
+                _id: `${rowLabel}${s.sColumn}`,
+                _status: status
+              };
+            });
+            setSeats(uiSeats);
+          } else {
+            // Nếu chưa có ghế trên DB, tạo mặc định
+            setSeats(generateSeatsByCapacity(activeRoom.rCapacity, activeBranchId as number, activeRoom.roomId));
+          }
+        } catch (error) {
+          console.error("Lỗi khi tải sơ đồ ghế:", error);
+          setSeats(generateSeatsByCapacity(activeRoom.rCapacity, activeBranchId as number, activeRoom.roomId));
+        }
+      }
+    };
+    loadSeats();
+  }, [activeRoomId, rooms, activeBranchId]);
 
   const handleSeatClick = (id: string) => {
     if (!isBulkMode) return;
     setSeats(prev => prev.map(seat => {
-      if (seat.id === id) {
-        if (seat.status === 'disabled') return { ...seat, status: 'available' };
-        return { ...seat, status: seat.status === 'selected' ? 'available' : 'selected' };
+      if (seat._id === id) {
+        if (seat._status === 'disabled') return { ...seat, _status: 'available', sType: 1, sStatus: true };
+        
+        // Cycle: Standard (1) -> VIP (2) -> Sweetbox (3) -> Standard (1)
+        let nextType = 1;
+        let nextStatus: 'available' | 'selected' = 'available';
+
+        if (seat.sType === 1) { nextType = 2; nextStatus = 'selected'; }
+        else if (seat.sType === 2) { nextType = 3; nextStatus = 'selected'; }
+        else { nextType = 1; nextStatus = 'available'; }
+
+        return { ...seat, _status: nextStatus, sType: nextType };
       }
       return seat;
     }));
@@ -88,30 +140,26 @@ export default function RoomsSeatsPage() {
   const handleSeatDoubleClick = (id: string) => {
     if (!isBulkMode) return;
     setSeats(prev => prev.map(seat => {
-      if (seat.id === id) return { ...seat, status: 'disabled' };
+      if (seat._id === id) return { ...seat, _status: 'disabled', sStatus: false };
       return seat;
     }));
   };
 
   const handleSave = async () => {
-    if (!activeRoomId) {
+    if (!activeRoomId || !activeBranchId) {
       toast.error("Không tìm thấy ID phòng để lưu!");
       return;
     }
 
     setIsSaving(true);
-    const finalCapacity = seats.filter(s => s.status !== 'disabled').length;
+    const finalCapacity = seats.filter(s => s._status !== 'disabled').length;
 
     try {
-      console.log("Đang lưu Room ID:", activeRoomId);
-      console.log("Dữ liệu gửi đi:", { layout: seats, capacity: finalCapacity });
-
-      const result = await roomService.updateLayout(activeRoomId, seats, finalCapacity);
+      const payload = seats.map(({ _id, _status, ...rest }) => rest);
+      await roomService.updateLayout(activeBranchId as number, activeRoomId as number, payload);
       
-      if (result) {
-        setRooms(prev => prev.map(r => r.id === activeRoomId ? { ...r, capacity: finalCapacity, layout: seats } : r));
-        toast.success("Đã đồng bộ sơ đồ phòng!");
-      }
+      setRooms(prev => prev.map(r => r.roomId === activeRoomId ? { ...r, rCapacity: finalCapacity } : r));
+      toast.success("Đã đồng bộ sơ đồ phòng!");
     } catch (error: any) {
       console.error("Lỗi chi tiết từ Server:", error.response?.data || error.message);
       toast.error(`Lưu thất bại: ${error.response?.data?.message || "Lỗi kết nối API"}`);
@@ -122,24 +170,37 @@ export default function RoomsSeatsPage() {
 
   const handleCreateNewRoom = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!activeBranchId) return;
     const formData = new FormData(e.currentTarget);
     const cap = Number(formData.get('capacity'));
-    const newRoomData: Partial<Room> = {
-      name: formData.get('name') as string,
-      type: formData.get('type') as string,
-      capacity: cap,
-      status: 'Idle',
-      branchId: activeBranchId,
-      layout: generateSeatsByCapacity(cap)
+    const newRoomData = {
+      rType: formData.get('type') as string,
+      rCapacity: cap,
+      branchId: activeBranchId as number,
+      roomId: Math.floor(Math.random() * 10000), // temp
+      basePrice: 50000,
+      totalSeats: cap
     };
     try {
       const created = await roomService.create(newRoomData);
       setRooms(prev => [...prev, created]);
-      setActiveRoomId(created.id);
+      setActiveRoomId(created.roomId);
       setIsNewRoomDialogOpen(false);
       toast.success("Thêm phòng chiếu thành công!");
     } catch (error) {
       toast.error("Không thể tạo phòng mới.");
+    }
+  };
+
+  const handleDeleteRoom = async (branchId: number, roomId: number) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa phòng chiếu này?")) return;
+    try {
+      await roomService.delete(branchId, roomId);
+      setRooms(prev => prev.filter(r => !(r.branchId === branchId && r.roomId === roomId)));
+      if (activeRoomId === roomId) setActiveRoomId('');
+      toast.success("Đã xóa phòng chiếu.");
+    } catch (error) {
+      toast.error("Lỗi khi xóa phòng.");
     }
   };
 
@@ -156,13 +217,15 @@ export default function RoomsSeatsPage() {
       {/* Header */}
       <div className="flex items-end justify-between mb-8 shrink-0">
         <div>
-          <div className="relative flex items-center gap-2 text-[11px] text-indigo-500 font-black tracking-[2px] mb-2 cursor-pointer group bg-indigo-50 w-fit px-3 py-1 rounded-lg">
+          <div className={`relative flex items-center gap-2 text-[11px] text-indigo-500 font-black tracking-[2px] mb-2 group bg-indigo-50 w-fit px-3 py-1 rounded-lg ${isManager ? '' : 'cursor-pointer'}`}>
             <Building2 className="w-3.5 h-3.5" />
-            <select value={activeBranchId} onChange={(e) => setActiveBranchId(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full">
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name.toUpperCase()}</option>)}
-            </select>
-            <span className="uppercase">{branches.find(b => b.id === activeBranchId)?.name || 'SELECT BRANCH'}</span>
-            <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-all" />
+            {!isManager && (
+              <select value={activeBranchId} onChange={(e) => setActiveBranchId(Number(e.target.value))} className="absolute inset-0 opacity-0 cursor-pointer w-full">
+                {branches.map((b, i) => <option key={b.branchId || i} value={b.branchId}>{b.bName?.toUpperCase() || `BRANCH ${b.branchId}`}</option>)}
+              </select>
+            )}
+            <span className="uppercase">{branches.find(b => b.branchId === activeBranchId)?.bName || 'SELECT BRANCH'}</span>
+            {!isManager && <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-all" />}
           </div>
           <h1 className="text-[44px] font-black text-[#2d3337] tracking-tighter leading-tight uppercase">Rooms & Seats</h1>
         </div>
@@ -174,18 +237,25 @@ export default function RoomsSeatsPage() {
       <div className="flex gap-8 flex-1 min-h-0">
         {/* Sidebar - Room List */}
         <div className="w-[350px] shrink-0 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
-          {filteredRooms.length > 0 ? filteredRooms.map(room => (
-            <div key={room.id} onClick={() => setActiveRoomId(room.id)}
-              className={`p-6 rounded-[24px] cursor-pointer transition-all border-2 ${activeRoomId === room.id ? 'bg-white border-indigo-600 shadow-xl scale-[1.02]' : 'bg-white/60 border-transparent hover:bg-white hover:border-gray-200'}`}
+          {filteredRooms.length > 0 ? filteredRooms.map((room, i) => (
+            <div key={room.roomId || i} onClick={() => setActiveRoomId(room.roomId)}
+              className={`p-6 rounded-[24px] cursor-pointer transition-all border-2 group/card relative ${activeRoomId === room.roomId ? 'bg-white border-indigo-600 shadow-xl scale-[1.02]' : 'bg-white/60 border-transparent hover:bg-white hover:border-gray-200'}`}
             >
               <div className="flex justify-between items-start mb-4">
-                <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${activeRoomId === room.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{room.type}</span>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{room.status}</p>
+                <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${activeRoomId === room.roomId ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{room.rType}</span>
+                <div className="flex gap-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.branchId, room.roomId); }}
+                    className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-500"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <h3 className="text-xl font-black text-gray-800 leading-tight mb-4 uppercase">{room.name}</h3>
+              <h3 className="text-xl font-black text-gray-800 leading-tight mb-4 uppercase">Room {room.roomId}</h3>
               <div className="bg-gray-50 rounded-2xl p-4 flex items-center justify-between shadow-inner">
                 <span className="text-[10px] font-black text-gray-400 uppercase">Sức chứa</span>
-                <p className="text-sm font-black text-gray-900">{room.capacity} <span className="text-[10px] text-gray-500 font-bold uppercase ml-1">Ghế</span></p>
+                <p className="text-sm font-black text-gray-900">{room.rCapacity} <span className="text-[10px] text-gray-500 font-bold uppercase ml-1">Ghế</span></p>
               </div>
             </div>
           )) : (
@@ -199,9 +269,10 @@ export default function RoomsSeatsPage() {
             <>
               <div className="bg-gray-50/50 p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-[#babbff]" /><span className="text-[10px] font-black text-gray-400 uppercase">Thường</span></div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-[#d4a6ff]" /><span className="text-[10px] font-black text-gray-400 uppercase">VIP</span></div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-[#dde3e7] opacity-40" /><span className="text-[10px] font-black text-gray-400 uppercase">Hỏng/Khóa</span></div>
+                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-indigo-500" /><span className="text-[10px] font-black text-gray-400 uppercase">Thường</span></div>
+                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-purple-600" /><span className="text-[10px] font-black text-gray-400 uppercase">VIP</span></div>
+                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-rose-500" /><span className="text-[10px] font-black text-gray-400 uppercase">Sweetbox</span></div>
+                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-lg bg-gray-300" /><span className="text-[10px] font-black text-gray-400 uppercase">Hỏng/Khóa</span></div>
                 </div>
                 <div className="bg-gray-200/50 p-1.5 rounded-2xl flex items-center shadow-inner">
                   <button onClick={() => setIsBulkMode(true)} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isBulkMode ? 'bg-white text-indigo-600 shadow-md' : 'text-gray-500'}`}>Chế độ Sửa</button>
@@ -217,17 +288,18 @@ export default function RoomsSeatsPage() {
                 </div>
 
                 <div className="grid grid-cols-10 gap-4 p-8 bg-white/50 rounded-[40px] border border-white/50 backdrop-blur-sm">
-                  {seats.map((seat) => (
+                  {seats.map((seat, i) => (
                     <div 
-                      key={seat.id}
-                      onClick={() => handleSeatClick(seat.id)}
-                      onDoubleClick={() => handleSeatDoubleClick(seat.id)}
+                      key={seat._id || i}
+                      onClick={() => handleSeatClick(seat._id)}
+                      onDoubleClick={() => handleSeatDoubleClick(seat._id)}
                       className={`w-[48px] h-[48px] rounded-xl flex items-center justify-center transition-all duration-300 select-none shadow-sm font-black text-xs border-2 border-white/20
-                        ${seat.status === 'available' ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-600 hover:text-white cursor-pointer' : 
-                          seat.status === 'selected' ? 'bg-purple-600 text-white shadow-xl scale-110 z-10' : 
-                          'bg-gray-200 text-gray-400 opacity-30 cursor-not-allowed'}`}
+                        ${seat._status === 'disabled' ? 'bg-gray-200 text-gray-400 opacity-30 cursor-not-allowed' : 
+                          seat.sType === 2 ? 'bg-purple-600 text-white shadow-xl scale-110 z-10' : 
+                          seat.sType === 3 ? 'bg-rose-500 text-white shadow-xl scale-110 z-10' : 
+                          'bg-indigo-100 text-indigo-600 hover:bg-indigo-600 hover:text-white cursor-pointer'}`}
                     >
-                      {seat.id}
+                      {seat._id}
                     </div>
                   ))}
                 </div>
@@ -238,11 +310,11 @@ export default function RoomsSeatsPage() {
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Đang chỉnh sửa:</span>
                   <p className="text-lg font-black text-gray-800 uppercase tracking-tighter">
-                    {seats.filter(s => s.status === 'selected').length} Ghế VIP được thiết lập
+                    {seats.filter(s => s._status === 'selected').length} Ghế VIP được thiết lập
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <button onClick={() => setSeats(generateSeatsByCapacity(rooms.find(r => r.id === activeRoomId)?.capacity || 0))} 
+                  <button onClick={() => setSeats(generateSeatsByCapacity(rooms.find(r => r.roomId === activeRoomId)?.rCapacity || 0, activeBranchId as number, activeRoomId as number))} 
                     className="p-4 rounded-2xl text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all shadow-sm" title="Reset Grid">
                     <RotateCcw className="w-5 h-5" />
                   </button>
@@ -281,9 +353,11 @@ export default function RoomsSeatsPage() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Loại phòng</label>
                   <select name="type" className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl font-bold text-sm outline-none cursor-pointer">
-                    <option>Standard</option>
-                    <option>IMAX</option>
-                    <option>VIP</option>
+                    <option value="Standard">Standard</option>
+                    <option value="2D">2D</option>
+                    <option value="3D">3D</option>
+                    <option value="IMAX">IMAX</option>
+                    <option value="4DX">4DX</option>
                   </select>
                 </div>
                 <div className="space-y-2">

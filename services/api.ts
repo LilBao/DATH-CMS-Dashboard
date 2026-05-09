@@ -13,11 +13,23 @@ const api = axios.create({
 // Interceptor nạp Auto AccessToken lên headers của axios
 api.interceptors.request.use(
   (config) => {
-    // Lấy token từ trạng thái lưu ở Zustand Store
-    const token = useAuthStore.getState().accessToken;
+    // Lấy token và user từ trạng thái lưu ở Zustand Store
+    const state = useAuthStore.getState();
+    const token = state.accessToken;
+    const user = state.user;
+
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Tự động nạp branchId nếu là MANAGER và chưa có branchId trong params
+    if (user?.role?.toUpperCase().includes('MANAGER') && (user?.branchId !== undefined && user?.branchId !== null)) {
+      config.params = {
+        ...config.params,
+        branchId: config.params?.branchId ?? user.branchId
+      };
+    }
+
     return config;
   },
   (error) => {
@@ -28,7 +40,18 @@ api.interceptors.request.use(
 // Interceptor xử lý response, có thể can thiệp lúc hết hạn Token (401)
 api.interceptors.response.use(
   (response) => {
-    // Vì base API đều có chung ApiResponse -> Có thể chủ động return response hoặc response.data tuỳ kiến trúc
+    const apiRes = response.data;
+
+    if (apiRes && typeof apiRes === 'object' && apiRes.message) {
+      if (response.config.method !== 'get' || (apiRes.message.toLowerCase() !== 'success' && apiRes.message !== 'OK')) {
+        toast.success(apiRes.message);
+      }
+    }
+
+    if (apiRes && typeof apiRes === 'object' && 'success' in apiRes && 'data' in apiRes) {
+      response.data = apiRes.data;
+    }
+
     return response;
   },
   async (error) => {
@@ -65,12 +88,12 @@ api.interceptors.response.use(
     }
 
     // Hiển thị lỗi thông qua toast (trừ trường hợp 401 đã xử lý ở trên hoặc đang refresh)
-    const errorMessage = 
-      error.response?.data?.message || 
-      error.response?.data?.error || 
-      error.message || 
+    const errorMessage =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.message ||
       'Đã có lỗi xảy ra';
-    
+
     // Chỉ hiển thị toast nếu không phải là lỗi 401 (đã được xử lý chuyển hướng hoặc refresh)
     if (error.response?.status !== 401) {
       toast.error('Lỗi hệ thống', {

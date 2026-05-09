@@ -1,44 +1,58 @@
 import api from './api';
 
-export interface Showtime {
-  id: string;
-  movieId: string;
-  branchId: string;
-  roomId: string;
-  date: string;
-  time: string;
-  theme?: 'mint' | 'lavender' | 'blue' | 'red';
-  isConflict?: boolean;
+export interface ShowtimeRequest {
+  movieId: number;
+  branchId: number;
+  roomId: number;
+  formatName?: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface ShowtimeResponse {
+  timeId: number;
+  movieId: number;
+  movieName: string;
+  branchId: number;
+  branchName: string;
+  roomId: number;
+  rType: string;
+  rPrice: number;
+  formatName: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  status: string;
 }
 
 export const showtimeService = {
   // Lấy toàn bộ danh sách suất chiếu
-  getAll: async () => {
+  getAll: async (): Promise<ShowtimeResponse[]> => {
     const response = await api.get('/showtimes');
     return response.data;
   },
 
   // Lấy danh sách suất chiếu theo chi nhánh
-  getByBranch: async (branchId: string) => {
+  getByBranch: async (branchId: string): Promise<ShowtimeResponse[]> => {
     const response = await api.get(`/showtimes?branchId=${branchId}`);
     return response.data;
   },
 
   // Tạo mới một suất chiếu
-  create: async (data: Partial<Showtime>) => {
+  create: async (data: ShowtimeRequest): Promise<ShowtimeResponse> => {
     const response = await api.post('/showtimes', data);
     return response.data;
   },
 
   // Cập nhật suất chiếu hiện có
-  update: async (id: string, data: Partial<Showtime>) => {
+  update: async (id: number, data: Partial<ShowtimeRequest>): Promise<ShowtimeResponse> => {
     const response = await api.put(`/showtimes/${id}`, data);
     return response.data;
   },
 
   // Xóa suất chiếu
-  delete: async (id: string) => {
-    const response = await api.delete(`/showtimes/${id}`);
-    return response.data;
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/showtimes/${id}`);
   }
 };

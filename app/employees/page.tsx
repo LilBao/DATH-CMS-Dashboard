@@ -2,29 +2,47 @@
 
 import Link from 'next/link';
 import { useState, useMemo, useEffect } from 'react';
-import { 
-  Plus, Search, CalendarClock, MoreVertical, X, 
-  Edit, Trash2, Mail, Loader2 
+import {
+  Plus, Search, CalendarClock, MoreVertical, X,
+  Edit, Trash2, Mail, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { employeeService, Employee } from '@/services/employeeService';
+import { employeeService, EmployeeResponse, EmployeeRequest } from '@/services/employeeService';
 import FileUpload from '../components/FileUpload';
+import { ConfirmModal } from '../components/ui/confirm-modal';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<EmployeeResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState('All Roles');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeResponse | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>('');
 
+  // State cho Confirm Delete
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
+
+  const { user } = useAuthStore();
+  const rawRole = user?.role || "";
+  const isManager = rawRole.toUpperCase() === 'MANAGER' || rawRole.toUpperCase() === 'ROLE_MANAGER';
+  const managerBranchId = user?.branchId;
+
+  useEffect(() => {
+    console.log("Full User Object from Store:", user);
+    console.log("Current User Role:", rawRole);
+    console.log("Is Manager:", isManager);
+    console.log("Manager Branch ID:", managerBranchId);
+  }, [user, rawRole, isManager, managerBranchId]);
+
   useEffect(() => {
     if (selectedEmployee) {
-      setAvatarUrl(selectedEmployee.avatarUrl || '');
+      setAvatarUrl(''); // Backend DTO doesn't store avatar, just reset or use dicebear
     } else {
       setAvatarUrl('');
     }
@@ -34,12 +52,22 @@ export default function EmployeesPage() {
   const fetchEmployees = async () => {
     try {
       setIsLoading(true);
-      const data = await employeeService.getAll();
-      // Đảm bảo data là mảng, xử lý trường hợp API trả về object bọc data
-      const rawData = Array.isArray(data) ? data : data.data ?? [];
-      setEmployees(rawData);
+      
+      let data;
+      // Nếu là Manager và có ID chi nhánh hợp lệ, gọi API theo chi nhánh
+      if (isManager && managerBranchId !== undefined && managerBranchId !== null) {
+        console.log("Fetching employees for branch:", managerBranchId);
+        data = await employeeService.getByBranch(managerBranchId);
+      } else {
+        // Admin lấy hết, hoặc Manager chưa kịp nạp branchId (Interceptor trong api.ts sẽ tự lọc nếu là Manager)
+        console.log("Fetching employees via getAll");
+        data = await employeeService.getAll();
+      }
+      
+      setEmployees(Array.isArray(data) ? data : []);
     } catch (error) {
-      toast.error("Không thể tải danh sách nhân viên từ máy chủ");
+      toast.error("Không thể nạp danh sách nhân viên.");
+      setEmployees([]);
     } finally {
       setIsLoading(false);
     }
@@ -51,9 +79,9 @@ export default function EmployeesPage() {
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(emp => {
-      const matchSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          emp.id.toString().toLowerCase().includes(searchQuery.toLowerCase());
-      const matchRole = selectedRole === 'All Roles' || emp.role === selectedRole;
+      const matchSearch = emp.eName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.eUserId.toString().toLowerCase().includes(searchQuery.toLowerCase());
+      const matchRole = selectedRole === 'All Roles' || emp.userType === selectedRole;
       return matchSearch && matchRole;
     });
   }, [employees, searchQuery, selectedRole]);
@@ -71,19 +99,34 @@ export default function EmployeesPage() {
     e.preventDefault();
     setIsSaving(true);
     const formData = new FormData(e.currentTarget);
-    
+
     // Thu thập dữ liệu từ Form
-    const employeeData: Partial<Employee> = {
-      name: formData.get('name') as string,
+    const formBranchId = formData.get('branchId') ? Number(formData.get('branchId')) : 0;
+
+    // Ưu tiên branchId từ Store nếu là MANAGER, ngược lại lấy từ Form
+    let finalBranchId = formBranchId;
+    if (isManager && managerBranchId !== undefined && managerBranchId !== null) {
+      finalBranchId = managerBranchId;
+    }
+
+    const employeeData: EmployeeRequest = {
+      eUserId: selectedEmployee ? selectedEmployee.eUserId : `E${Date.now()}`,
+      eName: formData.get('name') as string,
       email: formData.get('email') as string,
-      role: formData.get('role') as string,
-      branchId: formData.get('branchId') as string,
+      phoneNumber: formData.get('phoneNumber') as string,
+      sex: formData.get('sex') as string,
+      userType: formData.get('role') as string,
+      branchId: finalBranchId,
       salary: Number(formData.get('salary')),
-      avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.get('name')}`
     };
 
+    // Nếu là nhân viên mới, có thể thêm mật khẩu mặc định hoặc từ input
+    if (!selectedEmployee) {
+      employeeData.ePassword = formData.get('password') as string || '123456';
+    }
+
     try {
-      await employeeService.save(employeeData, selectedEmployee?.id);
+      await employeeService.save(employeeData, selectedEmployee?.eUserId);
       toast.success(selectedEmployee ? "Cập nhật hồ sơ thành công!" : "Đã đăng ký nhân viên mới!");
       await fetchEmployees();
       setIsDrawerOpen(false);
@@ -94,15 +137,21 @@ export default function EmployeesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Xác nhận xóa nhân viên này khỏi hệ thống?")) return;
+  const handleDelete = (id: string) => {
+    setEmployeeToDelete(id);
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!employeeToDelete) return;
     try {
-      await employeeService.delete(id);
-      setEmployees(prev => prev.filter(e => e.id !== id));
+      await employeeService.delete(employeeToDelete);
+      setEmployees(prev => prev.filter(e => e.eUserId !== employeeToDelete));
       toast.success("Đã xóa nhân viên");
       setOpenMenuId(null);
     } catch (error) {
       toast.error("Lỗi khi thực hiện lệnh xóa");
+      throw error;
     }
   };
 
@@ -134,7 +183,7 @@ export default function EmployeesPage() {
         </div>
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-[120px] border-l-4 border-purple-500 transition-transform hover:scale-[1.02]">
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Vị trí công việc</p>
-          <span className="text-4xl font-black text-[#2d3337]">{Array.from(new Set(employees.map(e => e.role))).length}</span>
+          <span className="text-4xl font-black text-[#2d3337]">{Array.from(new Set(employees.map(e => e.userType))).length}</span>
         </div>
       </div>
 
@@ -143,15 +192,15 @@ export default function EmployeesPage() {
         <div className="bg-gray-50/30 border-b border-gray-100 p-6 flex items-center justify-between">
           <div className="relative w-[350px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text" placeholder="Tìm theo tên hoặc ID nhân viên..." 
+            <input
+              type="text" placeholder="Tìm theo tên hoặc ID nhân viên..."
               value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner" 
+              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
             />
           </div>
-          <select 
-            value={selectedRole} 
-            onChange={e => setSelectedRole(e.target.value)} 
+          <select
+            value={selectedRole}
+            onChange={e => setSelectedRole(e.target.value)}
             className="bg-white border border-gray-200 px-5 py-3 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             <option>All Roles</option>
@@ -176,52 +225,48 @@ export default function EmployeesPage() {
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
                 <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500" /></td></tr>
-              ) : filteredEmployees.length > 0 ? filteredEmployees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-indigo-50/30 transition-colors group">
+              ) : filteredEmployees.length > 0 ? filteredEmployees.map((emp, i) => (
+                <tr key={emp.eUserId || i} className="hover:bg-indigo-50/30 transition-colors group">
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 overflow-hidden">
-                        {emp.avatarUrl ? (
-                          <img src={emp.avatarUrl} alt={emp.name} className="w-full h-full object-cover" />
-                        ) : (
-                          emp.name.charAt(0)
-                        )}
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${emp.eName}`} alt={emp.eName} className="w-full h-full object-cover" />
                       </div>
                       <div>
-                        <p className="text-sm font-black text-gray-800 leading-tight">{emp.name}</p>
-                        <p className="text-[10px] text-gray-400 font-black mt-1 uppercase tracking-tighter">Mã NV: #{emp.id}</p>
+                        <p className="text-sm font-black text-gray-800 leading-tight">{emp.eName}</p>
+                        <p className="text-[10px] text-gray-400 font-black mt-1 uppercase tracking-tighter">Mã NV: #{emp.eUserId}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${getThemeStyles(emp.role)}`}>
-                      {emp.role}
+                    <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${getThemeStyles(emp.userType)}`}>
+                      {emp.userType}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-sm font-black text-gray-600 text-center">{emp.branchId}</td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                       <Mail className="w-3.5 h-3.5 text-gray-300"/> {emp.email}
+                      <Mail className="w-3.5 h-3.5 text-gray-300" /> {emp.email}
                     </div>
                   </td>
                   <td className="px-8 py-5 text-right relative">
-                    <button 
-                      onClick={() => setOpenMenuId(openMenuId === emp.id ? null : emp.id)} 
+                    <button
+                      onClick={() => setOpenMenuId(openMenuId === emp.eUserId ? null : emp.eUserId)}
                       className="p-2.5 hover:bg-white rounded-xl text-gray-400 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"
                     >
                       <MoreVertical className="w-5 h-5" />
                     </button>
 
-                    {openMenuId === emp.id && (
+                    {openMenuId === emp.eUserId && (
                       <div className="absolute right-12 top-10 w-44 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-20 animate-in zoom-in-95 origin-top-right">
-                        <button 
-                          onClick={() => { setSelectedEmployee(emp); setIsDrawerOpen(true); setOpenMenuId(null); }} 
+                        <button
+                          onClick={() => { setSelectedEmployee(emp); setIsDrawerOpen(true); setOpenMenuId(null); }}
                           className="w-full flex items-center gap-3 px-5 py-4 text-xs font-black text-gray-700 hover:bg-indigo-50 transition-colors"
                         >
                           <Edit className="w-4 h-4" /> SỬA HỒ SƠ
                         </button>
-                        <button 
-                          onClick={() => handleDelete(emp.id)} 
+                        <button
+                          onClick={() => handleDelete(emp.eUserId)}
                           className="w-full flex items-center gap-3 px-5 py-4 text-xs font-black text-rose-600 hover:bg-rose-50 transition-colors border-t border-gray-50"
                         >
                           <Trash2 className="w-4 h-4" /> XÓA NHÂN VIÊN
@@ -250,57 +295,98 @@ export default function EmployeesPage() {
                 </h2>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[2px] mt-1">Phòng quản lý nguồn nhân lực</p>
               </div>
-              <button onClick={() => setIsDrawerOpen(false)} className="p-3 bg-white border border-gray-200 rounded-2xl hover:bg-gray-100 transition-colors shadow-sm"><X className="w-5 h-5"/></button>
+              <button onClick={() => setIsDrawerOpen(false)} className="p-3 bg-white border border-gray-200 rounded-2xl hover:bg-gray-100 transition-colors shadow-sm"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveForm} className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-center block">Ảnh đại diện</label>
-                <FileUpload 
-                  folderName="employees"
-                  initialPreviewUrl={avatarUrl}
-                  onUploadSuccess={(url) => setAvatarUrl(url)}
-                  className="w-32 h-32 rounded-full mx-auto"
-                />
+            <form onSubmit={handleSaveForm} className="flex-1 overflow-y-auto p-8 space-y-5 custom-scrollbar">
+              <div className="flex flex-col items-center pb-4 border-b border-gray-50">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Ảnh đại diện</label>
+                <div className="w-24 h-24">
+                  <FileUpload
+                    folderName="employees"
+                    initialPreviewUrl={avatarUrl}
+                    onUploadSuccess={(url) => setAvatarUrl(url)}
+                    className="w-full h-full rounded-full shadow-md"
+                    aspect="square"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Họ và tên khai sinh</label>
-                <input name="name" type="text" required defaultValue={selectedEmployee?.name} className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="VD: Vũ Như Đại" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email công việc</label>
-                <input name="email" type="email" required defaultValue={selectedEmployee?.email} className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="email@cinema.com" />
-              </div>
-              <div className="grid grid-cols-2 gap-6">
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2 col-span-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Họ và tên khai sinh</label>
+                  <input name="name" type="text" required defaultValue={selectedEmployee?.eName} className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="VD: Vũ Như Đại" />
+                </div>
+
+                <div className="space-y-2 col-span-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email công việc</label>
+                  <input name="email" type="email" required defaultValue={selectedEmployee?.email} className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="email@cinema.com" />
+                </div>
+
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Vị trí đảm nhiệm</label>
-                  <select name="role" defaultValue={selectedEmployee?.role} className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm cursor-pointer">
-                    <option>Manager</option>
-                    <option>Supervisor</option>
-                    <option>Cashier</option>
-                    <option>Projectionist</option>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Số điện thoại</label>
+                  <input name="phoneNumber" type="text" defaultValue={selectedEmployee?.phoneNumber} className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="090..." />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Giới tính</label>
+                  <select name="sex" defaultValue={selectedEmployee?.sex || 'M'} className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm cursor-pointer">
+                    <option value="M">Nam</option>
+                    <option value="F">Nữ</option>
+                    <option value="O">Khác</option>
                   </select>
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Mã chi nhánh</label>
-                  <input name="branchId" type="text" defaultValue={selectedEmployee?.branchId} className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="BR-XXX" />
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Vị trí đảm nhiệm</label>
+                  <select name="role" defaultValue={selectedEmployee?.userType || "STAFF"} className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm cursor-pointer uppercase">
+                    <option value="STAFF">Staff</option>
+                    <option value="MANAGER">Manager</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
                 </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Chi nhánh</label>
+                  <input
+                    name="branchId"
+                    type="text"
+                    defaultValue={selectedEmployee?.branchId ?? managerBranchId ?? ""}
+                    readOnly={isManager}
+                    className={`w-full px-5 py-3.5 ${isManager ? 'bg-gray-100' : 'bg-gray-50'} border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm`}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Lương cơ bản ($)</label>
+                  <input name="salary" type="number" defaultValue={selectedEmployee?.salary} className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="3000" />
+                </div>
+
+                {!selectedEmployee && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Mật khẩu</label>
+                    <input name="password" type="password" className="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="******" />
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Lương cơ bản ($)</label>
-                <input name="salary" type="number" defaultValue={selectedEmployee?.salary} className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="3000" />
-              </div>
-              
-              <div className="pt-10 flex gap-4">
-                <button type="button" onClick={() => setIsDrawerOpen(false)} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black hover:bg-gray-200 transition-all uppercase text-[11px] tracking-widest">Hủy bỏ</button>
-                <button type="submit" disabled={isSaving} className="flex-[2] py-4 bg-[#4a4bd7] text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all uppercase text-[11px] tracking-widest flex items-center justify-center gap-2">
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (selectedEmployee ? 'Lưu thay đổi' : 'Hoàn tất đăng ký')}
+
+              <div className="pt-6 flex gap-3 sticky bottom-0 bg-white">
+                <button type="button" onClick={() => setIsDrawerOpen(false)} className="flex-1 py-4 bg-gray-50 text-gray-400 rounded-xl font-bold hover:bg-gray-100 transition-all uppercase text-[10px] tracking-widest border border-gray-100">Hủy</button>
+                <button type="submit" disabled={isSaving} className="flex-[2] py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all uppercase text-[10px] tracking-widest flex items-center justify-center gap-2">
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (selectedEmployee ? 'Lưu thay đổi' : 'Đăng ký ngay')}
                 </button>
               </div>
             </form>
           </div>
         </>
       )}
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Xác nhận xóa nhân sự"
+        description={`Bạn có chắc chắn muốn xóa nhân viên #${employeeToDelete}? Hồ sơ nhân sự sẽ bị gỡ bỏ khỏi hệ thống chi nhánh.`}
+      />
     </div>
   );
 }

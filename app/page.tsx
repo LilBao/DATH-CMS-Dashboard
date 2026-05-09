@@ -6,26 +6,11 @@ import svgPaths from "./imports/svg-pftphcbr1j";
 import imgMoviePoster from "./imports/693faa473f27747a26199d53fbdd83da54af2322.png";
 import imgMoviePoster1 from "./imports/8438a0d6694b198f9903cc656aa29f254f51c7f3.png";
 import imgMoviePoster2 from "./imports/4476fcf216e10f8cee92560cbcbef0e3d2962f33.png";
-import { movieService } from '@/services/movieService';
-import { orderService, Order } from '@/services/orderService';
-import { customerService } from '@/services/customerService';
+import { movieService, MovieResponse } from '@/services/movieService';
+import { orderService, OrderResponse } from '@/services/orderService';
+import { customerService, CustomerResponse } from '@/services/customerService';
+import { useAuthStore } from '@/stores/authStore';
 import { useRouter } from 'next/navigation';
-
-// --- TYPES ---
-type Movie = {
-  id: number | string;
-  title?: string;
-  name?: string;
-  genre?: string;
-  duration?: string | number;
-  releaseDate?: string;
-  release_date?: string;
-  status?: string;
-  poster?: string;
-  posterUrl?: string;
-  image?: string;
-  hall?: string;
-};
 
 // --- COMPONENTS ---
 
@@ -57,7 +42,7 @@ function KpiCard({ title, value, iconPath, iconColor, trend, isCurrency = false 
       <div className="flex items-start justify-between">
         <div className="h-[32px] w-[38px] rounded-[12px] flex items-center justify-center" style={{ backgroundColor: `${iconColor}1A` }}>
           <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
-             <path d={iconPath} fill={iconColor} />
+            <path d={iconPath} fill={iconColor} />
           </svg>
         </div>
         <div className="bg-[rgba(111,251,190,0.2)] px-2 py-1 rounded-full flex items-center gap-1">
@@ -76,7 +61,7 @@ function KpiCard({ title, value, iconPath, iconColor, trend, isCurrency = false 
   );
 }
 
-function RevenueChart({ orders }: { orders: Order[] }) {
+function RevenueChart({ orders }: { orders: OrderResponse[] }) {
   // Giả lập biểu đồ dựa trên dữ liệu thật (chia nhỏ doanh thu 7 ngày gần nhất)
   return (
     <div className="bg-white col-[1/span_2] rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] p-6">
@@ -93,9 +78,9 @@ function RevenueChart({ orders }: { orders: Order[] }) {
       <div className="h-[256px] flex items-end justify-between gap-2">
         {[0.4, 0.6, 0.9, 0.5, 0.8, 0.7, 1].map((scale, i) => (
           <div key={i} className="flex-1 bg-indigo-50 rounded-t-lg relative group">
-            <div 
-              className="absolute bottom-0 left-0 right-0 bg-indigo-600/40 rounded-t-lg transition-all duration-500" 
-              style={{ height: `${scale * 100}%` }} 
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-indigo-600/40 rounded-t-lg transition-all duration-500"
+              style={{ height: `${scale * 100}%` }}
             />
           </div>
         ))}
@@ -109,7 +94,7 @@ function OccupancyChart() {
     <div className="bg-white p-6 rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] relative h-[424px]">
       <h4 className="text-[18px] font-bold text-[#2d3337]">Seat Occupancy</h4>
       <p className="text-[12px] text-[#596063] mb-8">Average by screening type</p>
-      
+
       <div className="flex justify-center my-10 relative">
         <svg className="size-[192px]" viewBox="0 0 192 192">
           <circle cx="96" cy="96" r="80" stroke="#EAEEF1" strokeWidth="16" fill="none" />
@@ -141,7 +126,7 @@ function OccupancyChart() {
   );
 }
 
-function RecentOrders({ orders }: { orders: Order[] }) {
+function RecentOrders({ orders }: { orders: OrderResponse[] }) {
   const router = useRouter();
   return (
     <div className="bg-white col-[1/span_2] rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] p-6">
@@ -161,13 +146,13 @@ function RecentOrders({ orders }: { orders: Order[] }) {
         </thead>
         <tbody className="divide-y divide-gray-50">
           {orders.map((order, i) => (
-            <tr key={order.id} className="text-sm">
-              <td className="py-4 font-medium text-indigo-600">#{order.id}</td>
-              <td className="py-4 font-semibold text-[#2d3337]">{order.customerName}</td>
+            <tr key={order.orderId || i} className="text-sm">
+              <td className="py-4 font-medium text-indigo-600">#{order.orderId}</td>
+              <td className="py-4 font-semibold text-[#2d3337]">Khách Hàng</td>
               <td className="py-4 text-[#596063]">Interstellar (IMAX)</td>
               <td className="py-4">
-                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {order.status}
+                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${order.orderStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {order.orderStatus}
                 </span>
               </td>
               <td className="py-4 text-right font-bold text-[#2d3337]">${order.total.toFixed(2)}</td>
@@ -179,7 +164,7 @@ function RecentOrders({ orders }: { orders: Order[] }) {
   );
 }
 
-function LatestMovies({ movies }: { movies: Movie[] }) {
+function LatestMovies({ movies }: { movies: MovieResponse[] }) {
   const router = useRouter();
   return (
     <div className="bg-white p-6 rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)]">
@@ -189,22 +174,22 @@ function LatestMovies({ movies }: { movies: Movie[] }) {
       </div>
       <div className="space-y-4">
         {movies.map((movie, i) => (
-          <div key={movie.id} className="flex gap-4 p-2 hover:bg-gray-50 rounded-xl transition-all cursor-pointer">
+          <div key={movie.movieId || i} className="flex gap-4 p-2 hover:bg-gray-50 rounded-xl transition-all cursor-pointer">
             <div className="w-16 h-20 bg-gray-100 rounded-lg overflow-hidden relative shadow-sm">
-               <Image 
-                alt={movie.title || "Movie"} 
-                src={movie.posterUrl || movie.poster || imgMoviePoster} 
-                fill className="object-cover" 
+              <Image
+                alt={movie.mName || "Movie"}
+                src={movie.posterUrl || imgMoviePoster}
+                fill className="object-cover"
               />
             </div>
             <div className="flex-1 flex flex-col justify-center">
-              <h5 className="text-sm font-bold text-[#2d3337] line-clamp-1">{movie.title}</h5>
-              <p className="text-[10px] text-gray-400 uppercase font-medium">{movie.genre} • {movie.duration} MIN</p>
+              <h5 className="text-sm font-bold text-[#2d3337] line-clamp-1">{movie.mName}</h5>
+              <p className="text-[10px] text-gray-400 uppercase font-medium">{(movie.genres && movie.genres[0]) || 'Unknown'} • {movie.runTime} MIN</p>
               <div className="mt-2 flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${movie.status === 'Coming Soon' ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                  {movie.status}
+                <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${new Date(movie.releaseDate).getTime() > Date.now() ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                  {new Date(movie.releaseDate).getTime() > Date.now() ? 'Coming Soon' : 'Now Showing'}
                 </span>
-                <span className="text-[9px] text-gray-400 font-medium">• Now Showing</span>
+                <span className="text-[9px] text-gray-400 font-medium">• Info</span>
               </div>
             </div>
           </div>
@@ -217,10 +202,14 @@ function LatestMovies({ movies }: { movies: Movie[] }) {
 // --- MAIN PAGE ---
 
 export default function DashboardPage() {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [customersCount, setCustomersCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { user } = useAuthStore();
+  const isManager = user?.role === 'MANAGER';
+  const managerBranchId = user?.branchId;
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -228,23 +217,23 @@ export default function DashboardPage() {
         setIsLoading(true);
         const [movieData, orderData, customerData] = await Promise.all([
           movieService.getAll(),
-          orderService.getAll(),
+          orderService.getAll(isManager && managerBranchId !== undefined ? managerBranchId : undefined),
           customerService.getAll()
         ]);
 
         // Normalize Movie Data
-        const rawMovies = Array.isArray(movieData) ? movieData : movieData.data ?? [];
+        const rawMovies = Array.isArray(movieData) ? movieData : [];
         const latest = [...rawMovies]
           .sort((a, b) => new Date(b.releaseDate || 0).getTime() - new Date(a.releaseDate || 0).getTime())
           .slice(0, 4);
         setMovies(latest);
 
         // Normalize Order Data
-        const rawOrders = Array.isArray(orderData) ? orderData : orderData.data ?? [];
+        const rawOrders = Array.isArray(orderData) ? orderData : [];
         setOrders(rawOrders.slice(0, 3));
 
         // Normalize Customer Data
-        const rawCustomers = Array.isArray(customerData) ? customerData : customerData.data ?? [];
+        const rawCustomers = Array.isArray(customerData) ? customerData : [];
         setCustomersCount(rawCustomers.length);
 
       } catch (error) {
@@ -270,39 +259,39 @@ export default function DashboardPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto bg-[#FBF7FF] min-h-screen">
-      <div className="content-stretch flex flex-col gap-[32px] items-start pb-[48px] pt-[96px] px-[32px] relative w-full">
+      <div className="content-stretch flex flex-col gap-[32px] items-start pb-[48px] px-[32px] relative w-full">
         <Container />
-        
+
         {/* KPI Grid - Giờ đây đã lấy dữ liệu thật */}
         <div className="gap-x-[24px] gap-y-[24px] grid grid-cols-4 relative shrink-0 w-full">
-          <KpiCard 
-            title="Total Revenue" 
-            value={totalRevenue} 
-            isCurrency={true} 
-            iconPath={svgPaths.p3f437800} 
-            iconColor="#4A4BD7" 
-            trend="12.4%" 
+          <KpiCard
+            title="Total Revenue"
+            value={totalRevenue}
+            isCurrency={true}
+            iconPath={svgPaths.p3f437800}
+            iconColor="#4A4BD7"
+            trend="12.4%"
           />
-          <KpiCard 
-            title="Tickets Sold" 
+          <KpiCard
+            title="Tickets Sold"
             value={orders.length * 2} // Giả định trung bình 2 vé/order
-            iconPath={svgPaths.p38027400} 
-            iconColor="#842CD3" 
-            trend="8.1%" 
+            iconPath={svgPaths.p38027400}
+            iconColor="#842CD3"
+            trend="8.1%"
           />
-          <KpiCard 
-            title="Active Movies" 
-            value={movies.length} 
-            iconPath={svgPaths.p349bd800} 
-            iconColor="#006D4A" 
-            trend="Stable" 
+          <KpiCard
+            title="Active Movies"
+            value={movies.length}
+            iconPath={svgPaths.p349bd800}
+            iconColor="#006D4A"
+            trend="Stable"
           />
-          <KpiCard 
-            title="Customers" 
-            value={customersCount} 
-            iconPath={svgPaths.p2be64098} 
-            iconColor="#AC3149" 
-            trend="24%" 
+          <KpiCard
+            title="Customers"
+            value={customersCount}
+            iconPath={svgPaths.p2be64098}
+            iconColor="#AC3149"
+            trend="24%"
           />
         </div>
 

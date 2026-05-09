@@ -2,27 +2,15 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { X, Search, ChevronDown } from 'lucide-react';
-
-interface Movie {
-  id: string;
-  title: string;
-  genre: string;
-}
-
-interface Showtime {
-  id: string;
-  movieId: string;
-  branchId: string;
-  roomId: string;
-  date: string;
-  time: string;
-}
+import { ShowtimeResponse } from '@/services/showtimeService';
+import { MovieResponse } from '@/services/movieService';
+import { roomService, ScreenRoomResponse } from '@/services/roomService';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  selectedShowtime: Showtime | null;
-  movies: Movie[];
+  selectedShowtime: ShowtimeResponse | null;
+  movies: MovieResponse[];
   selectedDate: string;
   selectedBranch: string;
   onSave: (e: React.FormEvent<HTMLFormElement>, payload: any) => void;
@@ -33,21 +21,34 @@ export default function ShowtimeFormDrawer({
   isOpen, onClose, selectedShowtime, movies, selectedDate, selectedBranch, onSave, onDelete 
 }: Props) {
   const [movieSearchQuery, setMovieSearchQuery] = useState('');
-  const [selectedMovieId, setSelectedMovieId] = useState('');
+  const [selectedMovieId, setSelectedMovieId] = useState<number | ''>('');
   const [isMovieDropdownOpen, setIsMovieDropdownOpen] = useState(false);
+  const [rooms, setRooms] = useState<ScreenRoomResponse[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Khôi phục dữ liệu khi mở Drawer
   useEffect(() => {
     if (selectedShowtime) {
-      const movie = movies.find(m => m.id === selectedShowtime.movieId);
-      setMovieSearchQuery(movie?.title || '');
+      const movie = movies.find(m => m.movieId === selectedShowtime.movieId);
+      setMovieSearchQuery(movie?.mName || '');
       setSelectedMovieId(selectedShowtime.movieId);
     } else {
       setMovieSearchQuery('');
       setSelectedMovieId('');
     }
-  }, [selectedShowtime, isOpen, movies]);
+
+    // Load rooms for the selected branch
+    const loadRooms = async () => {
+      try {
+        const allRooms = await roomService.getAll();
+        const branchRooms = allRooms.filter(r => String(r.branchId) === selectedBranch);
+        setRooms(branchRooms);
+      } catch (err) {
+        console.error("Failed to load rooms", err);
+      }
+    };
+    if (isOpen) loadRooms();
+  }, [selectedShowtime, isOpen, movies, selectedBranch]);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function ShowtimeFormDrawer({
   }, []);
 
   const filteredMovies = movies.filter(m => 
-    m.title.toLowerCase().includes(movieSearchQuery.toLowerCase())
+    (m.mName || '').toLowerCase().includes(movieSearchQuery.toLowerCase())
   );
 
   if (!isOpen) return null;
@@ -109,19 +110,19 @@ export default function ShowtimeFormDrawer({
                 {isMovieDropdownOpen && (
                   <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-gray-100 rounded-xl shadow-xl z-50 max-h-[220px] overflow-y-auto custom-scrollbar">
                     {filteredMovies.length > 0 ? (
-                      filteredMovies.map(movie => (
+                      filteredMovies.map((movie, i) => (
                         <div 
-                          key={movie.id}
+                          key={movie.movieId || i}
                           onClick={() => {
-                            setMovieSearchQuery(movie.title);
-                            setSelectedMovieId(movie.id);
+                            setMovieSearchQuery(movie.mName);
+                            setSelectedMovieId(movie.movieId);
                             setIsMovieDropdownOpen(false);
                           }}
                           className="px-4 py-3 hover:bg-blue-50/50 cursor-pointer flex items-center justify-between border-b last:border-0"
                         >
                           <div>
-                            <p className="text-sm font-bold text-gray-800">{movie.title}</p>
-                            <p className="text-[10px] font-medium text-gray-400 uppercase mt-0.5">{movie.genre}</p>
+                            <p className="text-sm font-bold text-gray-800">{movie.mName}</p>
+                            <p className="text-[10px] font-medium text-gray-400 uppercase mt-0.5">{movie.genres?.[0]}</p>
                           </div>
                         </div>
                       ))
@@ -136,20 +137,24 @@ export default function ShowtimeFormDrawer({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Date</label>
-                <input name="date" type="date" required defaultValue={selectedShowtime?.date || selectedDate} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
+                <input name="date" type="date" required defaultValue={selectedShowtime?.day || selectedDate} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Start Time</label>
-                <input name="startTime" type="time" required defaultValue={selectedShowtime?.time} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
+                <input name="startTime" type="time" required defaultValue={selectedShowtime?.startTime} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Room</label>
               <select name="room" defaultValue={selectedShowtime?.roomId} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none">
-                <option value="Room 1">Room 1</option>
-                <option value="Room 2">Room 2</option>
-                <option value="IMAX Hall">IMAX Hall</option>
+                {rooms.length > 0 ? (
+                  rooms.map(room => (
+                    <option key={room.roomId} value={room.roomId}>{room.rType} - Room {room.roomId}</option>
+                  ))
+                ) : (
+                  <option value="">No rooms available</option>
+                )}
               </select>
             </div>
           </div>

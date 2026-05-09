@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Product } from "@/services/productService";
+import { ProductResponse, FoodDrinkRequest, MerchandiseRequest } from "@/services/productService";
 import { X, Package, Loader2, DollarSign, Tag } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/movie_dialog";
 import { toast } from "sonner";
@@ -10,17 +10,16 @@ import FileUpload from "./FileUpload";
 interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Partial<Product>) => Promise<void>;
-  initialData: Product | null;
+  onSave: (data: Partial<FoodDrinkRequest | MerchandiseRequest>) => Promise<void>;
+  initialData: ProductResponse | null;
 }
 
 export default function ProductFormModal({ isOpen, onClose, onSave, initialData }: ProductFormModalProps) {
-  const [formData, setFormData] = useState<Partial<Product>>({
+  const [formData, setFormData] = useState<any>({
     name: "",
     category: "",
     price: 0,
     quantity: 0,
-    status: "In Stock",
     type: "Food",
     description: "",
     imageUrl: "",
@@ -29,14 +28,22 @@ export default function ProductFormModal({ isOpen, onClose, onSave, initialData 
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
+      const isMerch = 'merchName' in initialData;
+      setFormData({
+        name: isMerch ? (initialData as any).merchName : (initialData as any).pName,
+        category: isMerch ? '' : (initialData as any).pType,
+        price: initialData.price,
+        quantity: isMerch ? (initialData as any).availNum : (initialData as any).quantity,
+        type: isMerch ? "Merchandise" : "Food",
+        description: "",
+        imageUrl: initialData.imgUrl || "",
+      });
     } else {
       setFormData({
         name: "",
         category: "",
         price: 0,
         quantity: 0,
-        status: "In Stock",
         type: "Food",
         description: "",
         imageUrl: "",
@@ -48,7 +55,26 @@ export default function ProductFormModal({ isOpen, onClose, onSave, initialData 
     e.preventDefault();
     setIsSaving(true);
     try {
-      await onSave(formData);
+      let requestData: any;
+      if (formData.type === 'Food') {
+        requestData = {
+          pName: formData.name,
+          pType: formData.category || 'Combo',
+          price: formData.price,
+          quantity: formData.quantity,
+          imgUrl: formData.imageUrl
+        };
+      } else {
+        requestData = {
+          merchName: formData.name,
+          price: formData.price,
+          availNum: formData.quantity,
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0],
+          imgUrl: formData.imageUrl
+        };
+      }
+      await onSave(requestData);
       onClose();
     } catch (error) {
       toast.error("Lỗi khi lưu thông tin sản phẩm.");
@@ -71,10 +97,10 @@ export default function ProductFormModal({ isOpen, onClose, onSave, initialData 
           {/* Left Column: Image Upload */}
           <div className="space-y-4">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Hình ảnh sản phẩm</label>
-            <FileUpload 
+            <FileUpload
               folderName="products"
               initialPreviewUrl={formData.imageUrl}
-              onUploadSuccess={(url) => setFormData(prev => ({ ...prev, imageUrl: url }))}
+              onUploadSuccess={(url) => setFormData((prev: any) => ({ ...prev, imageUrl: url }))}
               className="aspect-square rounded-3xl"
             />
           </div>

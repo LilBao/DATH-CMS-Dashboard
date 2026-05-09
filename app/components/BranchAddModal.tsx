@@ -3,33 +3,26 @@
 import { useState } from 'react';
 import { X, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { branchService, Branch } from '@/services/branchService';
+import { branchService, BranchResponse, BranchRequest } from '@/services/branchService';
 
 interface BranchAddModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (newBranch: Branch) => void;
-  existingBranches: Branch[]; // Nhận danh sách hiện tại để tính mã ID
+  onSuccess: (newBranch: BranchResponse) => void;
+  existingBranches: BranchResponse[]; // Nhận danh sách hiện tại để tính mã ID
 }
 
 export default function BranchAddModal({ isOpen, onClose, onSuccess, existingBranches }: BranchAddModalProps) {
   const [isAdding, setIsAdding] = useState(false);
 
   const generateNextId = () => {
-    if (existingBranches.length === 0) return "BR-001";
+    if (existingBranches.length === 0) return 1;
 
     // Tìm mã ID lớn nhất hiện tại
-    const ids = existingBranches.map(b => {
-      // Tách phần số từ chuỗi "BR-xxx"
-      const match = b.id.match(/BR-(\d+)/);
-      return match ? parseInt(match[1]) : 0;
-    });
+    const ids = existingBranches.map(b => b.branchId || 0);
 
     const maxId = Math.max(...ids);
-    const nextId = maxId + 1;
-
-    // Định dạng lại thành chuỗi BR-xxx
-    return `BR-${nextId.toString().padStart(3, '0')}`;
+    return maxId + 1;
   };
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -37,23 +30,17 @@ export default function BranchAddModal({ isOpen, onClose, onSuccess, existingBra
     setIsAdding(true);
     const formData = new FormData(e.currentTarget);
     
-    // Tạo mã ID tự động
-    const autoId = generateNextId();
-
-    const newBranchData: Partial<Branch> = {
-      id: autoId,
-      name: formData.get('name') as string,
-      address: formData.get('address') as string,
-      phone: formData.get('phone') as string,
-      status: 'Active',
-      manager: (formData.get('manager') as string) || 'Chưa có quản lý'
+    const newBranchData: BranchRequest = {
+      bName: formData.get('name') as string,
+      bAddress: formData.get('address') as string,
+      phoneNumbers: [formData.get('phone') as string]
     };
 
     try {
       const created = await branchService.create(newBranchData);
       onSuccess(created);
       onClose();
-      toast.success(`Đã tạo chi nhánh ${autoId} thành công!`);
+      toast.success(`Đã tạo chi nhánh mới thành công!`);
     } catch (error) {
       toast.error("Không thể thêm chi nhánh.");
     } finally {

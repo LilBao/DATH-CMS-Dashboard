@@ -6,7 +6,14 @@ import Cookies from 'js-cookie';
 interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
-  user: any | null;
+  user: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+    avatar?: string;
+    branchId?: number;
+  } | null;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: any) => void;
   logout: () => void;
@@ -25,11 +32,39 @@ export const useAuthStore = create<AuthState>()(
         // Lưu ra Cookie, set hạn tương ứng (VD: 1 ngày và 30 ngày)
         Cookies.set('accessToken', accessToken, { expires: 1, path: '/' });
         Cookies.set('refreshToken', refreshToken, { expires: 30, path: '/' });
+        
+        // Giải mã token để lấy thông tin cơ bản nếu cần
+        let decodedUser = null;
+        try {
+          const decoded: any = jwtDecode(accessToken);
+          console.log("DEBUG: Decoded JWT:", decoded);
+          decodedUser = {
+            id: decoded.userId || decoded.sub,
+            email: decoded.sub,
+            role: decoded.role,
+            branchId: decoded.branchId ?? decoded.branch_id
+          };
+        } catch (e) {
+          console.error("Failed to decode token", e);
+        }
+
         // Đồng thời lưu vào Zustand state
-        set({ accessToken, refreshToken });
+        set((state) => ({ 
+          accessToken, 
+          refreshToken,
+          user: decodedUser ? { ...state.user, ...decodedUser } : state.user 
+        }));
       },
 
-      setUser: (user) => set({ user }),
+      setUser: (user) => set((state) => {
+        // Chỉ cập nhật các trường có giá trị hợp lệ, tránh ghi đè bằng undefined/null
+        const updates = Object.fromEntries(
+          Object.entries(user).filter(([_, v]) => v !== undefined && v !== null)
+        );
+        return { 
+          user: { ...state.user, ...updates } 
+        };
+      }),
 
       logout: () => {
         Cookies.remove('accessToken', { path: '/' });
@@ -56,9 +91,12 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage', // Vẫn giữ localStorage để backup thông tin user
-      // Chỉ partialize (lưu) `user` xuống localStorage, 
-      // còn accessToken và refreshToken thì quản lý hoàn toàn qua Cookie rồi.
-      partialize: (state) => ({ user: state.user }),
+      // Chỉ partialize (lưu) `user`, `accessToken`, `refreshToken` xuống localStorage
+      partialize: (state) => ({ 
+        user: state.user,
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken
+      }),
     }
   )
 );

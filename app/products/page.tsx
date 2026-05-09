@@ -1,30 +1,45 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  Search, Plus, Download, Package, 
-  ShoppingCart, AlertTriangle, Edit, Trash2, 
-  Loader2, UtensilsCrossed, Gift, ChevronLeft, ChevronRight 
+import {
+  Search, Plus, Download, Package,
+  ShoppingCart, AlertTriangle, Edit, Trash2,
+  Loader2, UtensilsCrossed, Gift, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { productService, Product } from '@/services/productService';
+import { productService, ProductResponse, FoodDrinkRequest, MerchandiseRequest } from '@/services/productService';
 import ProductFormModal from '../components/ProductFormModal';
+import { ConfirmModal } from '../components/ui/confirm-modal';
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductResponse[]>([]);
   const [activeTab, setActiveTab] = useState<'Food' | 'Merchandise'>('Food');
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const [productToEdit, setProductToEdit] = useState<ProductResponse | null>(null);
+  
+  // State cho Confirm Delete
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<ProductResponse | null>(null);
+
+  const isMerch = (p: ProductResponse) => 'merchName' in p;
+  const getName = (p: ProductResponse) => isMerch(p) ? (p as any).merchName : (p as any).pName;
+  const getType = (p: ProductResponse) => isMerch(p) ? 'Merchandise' : 'Food';
+  const getQty = (p: ProductResponse) => isMerch(p) ? (p as any).availNum : (p as any).quantity;
+  const getStatus = (p: ProductResponse) => {
+    const qty = getQty(p);
+    if (qty > 10) return 'In Stock';
+    if (qty > 0) return 'Low Stock';
+    return 'Out of Stock';
+  };
 
   // Fetch dữ liệu thực tế
   const fetchProducts = async () => {
     try {
       setIsLoading(true);
       const data = await productService.getAll();
-      const rawData = Array.isArray(data) ? data : data.data ?? [];
-      setProducts(rawData);
+      setProducts(data);
     } catch (error) {
       toast.error("Không thể tải danh sách sản phẩm.");
     } finally {
@@ -36,10 +51,10 @@ export default function ProductsPage() {
     fetchProducts();
   }, []);
 
-  const handleSaveProduct = async (data: Partial<Product>) => {
+  const handleSaveProduct = async (data: any) => {
     try {
       if (productToEdit) {
-        await productService.update(productToEdit.id, data);
+        await productService.update(productToEdit.productId, data, productToEdit.itemType);
         toast.success("Cập nhật sản phẩm thành công!");
       } else {
         await productService.create(data);
@@ -52,22 +67,28 @@ export default function ProductsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa sản phẩm này?")) return;
+  const handleDelete = async (p: ProductResponse) => {
+    setProductToDelete(p);
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
     try {
-      await productService.delete(id);
-      toast.success("Đã xóa sản phẩm.");
+      await productService.delete(productToDelete.productId, productToDelete.itemType);
+      toast.success("Đã xóa sản phẩm thành công.");
       fetchProducts();
     } catch (error) {
       toast.error("Lỗi khi xóa sản phẩm.");
+      throw error; // Để ConfirmModal handle loading state
     }
   };
 
   // Tính toán số liệu thống kê
   const stats = useMemo(() => {
     const totalItems = products.length;
-    const merchandiseCount = products.filter(p => p.type === 'Merchandise').length;
-    const lowStockAlerts = products.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock').length;
+    const merchandiseCount = products.filter(p => isMerch(p)).length;
+    const lowStockAlerts = products.filter(p => getStatus(p) === 'Low Stock' || getStatus(p) === 'Out of Stock').length;
 
     return {
       totalItems: totalItems.toLocaleString(),
@@ -77,14 +98,14 @@ export default function ProductsPage() {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => 
-      p.type === activeTab && 
-      (p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-       p.id.toString().toLowerCase().includes(searchQuery.toLowerCase()))
+    return products.filter(p =>
+      getType(p) === activeTab &&
+      (getName(p).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.productId.toString().toLowerCase().includes(searchQuery.toLowerCase()))
     );
   }, [products, activeTab, searchQuery]);
 
-  const getStatusStyle = (status: Product['status']) => {
+  const getStatusStyle = (status: string) => {
     switch (status) {
       case 'In Stock': return 'text-emerald-600 bg-emerald-50';
       case 'Low Stock': return 'text-amber-600 bg-amber-50';
@@ -103,7 +124,7 @@ export default function ProductsPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto min-h-screen pb-20 px-4">
-      
+
       {/* Header Section */}
       <div className="flex items-end justify-between mb-10">
         <div>
@@ -111,7 +132,7 @@ export default function ProductsPage() {
           <h1 className="text-[44px] font-black text-[#2d3337] tracking-tighter leading-tight uppercase">Products</h1>
           <p className="text-gray-500 font-medium">Quản lý kho hàng từ bắp nước đến các vật phẩm sưu tầm.</p>
         </div>
-        <button 
+        <button
           onClick={() => { setProductToEdit(null); setIsModalOpen(true); }}
           className="bg-[#4a4bd7] hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100 transition-all flex items-center gap-2 uppercase text-xs"
         >
@@ -131,7 +152,7 @@ export default function ProductsPage() {
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tổng mặt hàng</p>
           <p className="text-4xl font-black text-gray-800 mt-1">{stats.totalItems}</p>
         </div>
-        
+
         <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 transition-transform hover:scale-[1.02]">
           <div className="flex justify-between items-start mb-4">
             <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 shadow-inner">
@@ -157,16 +178,16 @@ export default function ProductsPage() {
 
       {/* Management Section */}
       <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
-        
+
         {/* Tabs */}
         <div className="flex border-b border-gray-100 px-6 pt-4 bg-gray-50/30">
-          <button 
+          <button
             onClick={() => setActiveTab('Food')}
             className={`px-8 py-5 text-xs font-black uppercase tracking-widest transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Food' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`}
           >
             <UtensilsCrossed className="w-4 h-4" /> Food & Drinks
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('Merchandise')}
             className={`px-8 py-5 text-xs font-black uppercase tracking-widest transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Merchandise' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`}
           >
@@ -178,9 +199,9 @@ export default function ProductsPage() {
         <div className="p-8 flex items-center justify-between gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Tìm theo tên hoặc mã sản phẩm..." 
+            <input
+              type="text"
+              placeholder="Tìm theo tên hoặc mã sản phẩm..."
               className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-inner"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -208,57 +229,57 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredProducts.length > 0 ? filteredProducts.map((p) => (
-                <tr key={p.id} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer">
+              {filteredProducts.length > 0 ? filteredProducts.map((p, i) => (
+                <tr key={p.productId || i} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer">
                   <td className="px-8 py-5">
-                    <span className="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-3 py-1 rounded-lg">#{p.id}</span>
+                    <span className="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-3 py-1 rounded-lg">#{p.productId}</span>
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-gray-50 rounded-2xl overflow-hidden flex items-center justify-center border border-gray-100 shadow-inner">
-                        {p.imageUrl ? (
-                          <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                        {p.imgUrl ? (
+                          <img src={p.imgUrl} alt={getName(p)} className="w-full h-full object-cover" />
                         ) : (
                           <Package className="w-6 h-6 text-gray-300" />
                         )}
                       </div>
                       <div>
-                        <p className="text-sm font-black text-gray-800 leading-tight uppercase tracking-tighter">{p.name}</p>
-                        <p className="text-[11px] text-gray-400 font-bold mt-1 line-clamp-1 italic">{p.description || "Chưa có mô tả"}</p>
+                        <p className="text-sm font-black text-gray-800 leading-tight uppercase tracking-tighter">{getName(p)}</p>
+                        <p className="text-[11px] text-gray-400 font-bold mt-1 line-clamp-1 italic">Chưa có mô tả</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className="text-[10px] font-black text-gray-500 bg-gray-100 px-3 py-1 rounded-lg uppercase">{p.category}</span>
+                    <span className="text-[10px] font-black text-gray-500 bg-gray-100 px-3 py-1 rounded-lg uppercase">{getType(p)}</span>
                   </td>
                   <td className="px-8 py-5 text-sm font-black text-gray-800">
                     ${p.price.toFixed(2)}
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
-                      <input 
-                        type="number" 
-                        defaultValue={p.quantity} 
+                      <input
+                        type="number"
+                        defaultValue={getQty(p)}
                         className="w-20 bg-gray-50 border-none rounded-xl px-3 py-2 text-sm font-black text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
                       />
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <div className={`flex items-center gap-1.5 font-black text-[10px] uppercase px-3 py-1 rounded-full w-fit ${getStatusStyle(p.status)}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${p.status === 'In Stock' ? 'bg-emerald-500' : p.status === 'Low Stock' ? 'bg-amber-500' : 'bg-rose-500'}`} />
-                      {p.status}
+                    <div className={`flex items-center gap-1.5 font-black text-[10px] uppercase px-3 py-1 rounded-full w-fit ${getStatusStyle(getStatus(p))}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${getStatus(p) === 'In Stock' ? 'bg-emerald-500' : getStatus(p) === 'Low Stock' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+                      {getStatus(p)}
                     </div>
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); setProductToEdit(p); setIsModalOpen(true); }}
                         className="p-2.5 text-gray-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all shadow-sm border border-transparent hover:border-indigo-100"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(p); }}
                         className="p-2.5 text-gray-400 hover:text-rose-600 hover:bg-white rounded-xl transition-all shadow-sm border border-transparent hover:border-rose-100"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -289,11 +310,18 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      <ProductFormModal 
+      <ProductFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveProduct}
         initialData={productToEdit}
+      />
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Xác nhận xóa"
+        description={`Bạn có chắc chắn muốn xóa sản phẩm "${productToDelete ? getName(productToDelete) : ''}"? Hành động này không thể hoàn tác.`}
       />
     </div>
   );

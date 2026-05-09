@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { 
+import {
   Search, Filter, Download, X, Shield,
   Key, Save, ChevronRight, Loader2, User as UserIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { customerService, Customer } from '@/services/customerService';
+import { customerService, CustomerResponse } from '@/services/customerService';
 
 export default function CustomerPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [membershipFilter, setMembershipFilter] = useState("All");
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -21,9 +21,7 @@ export default function CustomerPage() {
     try {
       setIsLoading(true);
       const data = await customerService.getAll();
-      // Hỗ trợ cả trường hợp API trả về mảng thô hoặc object bọc data
-      const rawData = Array.isArray(data) ? data : data.data ?? [];
-      setCustomers(rawData);
+      setCustomers(data);
     } catch (error) {
       toast.error("Không thể nạp danh sách khách hàng từ hệ thống.");
     } finally {
@@ -40,10 +38,10 @@ export default function CustomerPage() {
     if (!selectedCustomer) return;
     setIsSaving(true);
     try {
-      await customerService.update(selectedCustomer.id, selectedCustomer);
-      toast.success(`Hồ sơ khách hàng ${selectedCustomer.name} đã được cập nhật!`);
+      await customerService.update(selectedCustomer.cUserId, selectedCustomer);
+      toast.success(`Hồ sơ khách hàng ${selectedCustomer.cName} đã được cập nhật!`);
       // Cập nhật lại danh sách local, tránh fetch lại toàn bộ
-      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? selectedCustomer : c));
+      setCustomers(prev => prev.map(c => c.cUserId === selectedCustomer.cUserId ? selectedCustomer : c));
       setSelectedCustomer(null);
     } catch (error) {
       toast.error("Lỗi khi lưu thay đổi hồ sơ.");
@@ -55,13 +53,13 @@ export default function CustomerPage() {
   // Logic lọc khách hàng
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
-      const matchSearch = 
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.phone.includes(searchQuery);
-      
-      const matchMembership = membershipFilter === "All" || c.membership === membershipFilter;
-      
+      const matchSearch =
+        (c.cName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+        (c.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+        (c.phoneNumber || "").includes(searchQuery);
+
+      const matchMembership = membershipFilter === "All" || c.membershipTier === membershipFilter;
+
       return matchSearch && matchMembership;
     });
   }, [customers, searchQuery, membershipFilter]);
@@ -76,7 +74,7 @@ export default function CustomerPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto min-h-screen pb-20 relative px-4">
-      
+
       {/* Header Section */}
       <div className="flex items-end justify-between mb-10">
         <div>
@@ -94,16 +92,16 @@ export default function CustomerPage() {
         <div className="p-8 border-b border-gray-50 flex items-center justify-between bg-gray-50/30 gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Tìm theo tên, email, hoặc số điện thoại..." 
+            <input
+              type="text"
+              placeholder="Tìm theo tên, email, hoặc số điện thoại..."
               className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-inner"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           <div className="flex gap-2">
-            <select 
+            <select
               value={membershipFilter}
               onChange={(e) => setMembershipFilter(e.target.value)}
               className="bg-white text-gray-700 border border-gray-200 px-5 py-3 rounded-2xl font-black text-xs hover:bg-gray-50 transition-all outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer uppercase tracking-tighter"
@@ -129,40 +127,40 @@ export default function CustomerPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredCustomers.length > 0 ? filteredCustomers.map((customer) => (
-                <tr 
-                  key={customer.id} 
+              {filteredCustomers.length > 0 ? filteredCustomers.map((customer, i) => (
+                <tr
+                  key={customer.cUserId || i}
                   onClick={() => setSelectedCustomer(customer)}
-                  className={`hover:bg-indigo-50/30 transition-colors group cursor-pointer ${selectedCustomer?.id === customer.id ? 'bg-indigo-50/50' : ''}`}
+                  className={`hover:bg-indigo-50/30 transition-colors group cursor-pointer ${selectedCustomer?.cUserId === customer.cUserId ? 'bg-indigo-50/50' : ''}`}
                 >
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-sm font-black text-white shadow-lg shadow-indigo-100">
-                        {customer.name.charAt(0)}
+                        {customer.cName?.charAt(0) || "U"}
                       </div>
                       <div>
-                        <p className="text-sm font-black text-gray-800 leading-tight uppercase tracking-tighter">{customer.name}</p>
+                        <p className="text-sm font-black text-gray-800 leading-tight uppercase tracking-tighter">{customer.cName || "Unknown Customer"}</p>
                         <p className="text-[11px] text-gray-400 font-bold mt-1">{customer.email}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-5">
                     <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider
-                      ${customer.membership === 'VIP' ? 'bg-amber-100 text-amber-700' : 
-                        customer.membership === 'Premium' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {customer.membership}
+                      ${customer.membershipTier === 'VIP' ? 'bg-amber-100 text-amber-700' :
+                        customer.membershipTier === 'Premium' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {customer.membershipTier}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-center font-black text-gray-700 text-sm">
-                    {customer.totalOrders}
+                    {0}
                   </td>
                   <td className="px-8 py-5 font-black text-gray-800 text-sm">
-                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(customer.totalSpent)}
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(customer.totalPoints || 0)}
                   </td>
                   <td className="px-8 py-5">
-                    <div className={`flex items-center gap-2 font-black text-[10px] uppercase ${customer.status === 'Active' ? 'text-emerald-600' : 'text-gray-400'}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${customer.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                      {customer.status}
+                    <div className={`flex items-center gap-2 font-black text-[10px] uppercase ${customer.isActive ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${customer.isActive ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                      {customer.isActive ? 'Active' : 'Inactive'}
                     </div>
                   </td>
                   <td className="px-8 py-5 text-right">
@@ -179,7 +177,7 @@ export default function CustomerPage() {
             </tbody>
           </table>
         </div>
-        
+
         <div className="p-6 bg-gray-50/50 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-t border-gray-100">
           Hiển thị {filteredCustomers.length} khách hàng trong cơ sở dữ liệu
         </div>
@@ -202,11 +200,11 @@ export default function CustomerPage() {
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-10 text-center bg-gradient-to-b from-indigo-50/50 to-transparent">
                 <div className="w-28 h-28 rounded-[32px] bg-indigo-600 mx-auto mb-5 flex items-center justify-center text-4xl font-black text-white shadow-2xl shadow-indigo-100">
-                  {selectedCustomer.name.charAt(0)}
+                  {selectedCustomer.cName?.charAt(0) || "U"}
                 </div>
-                <h3 className="text-3xl font-black text-gray-800 uppercase tracking-tighter">{selectedCustomer.name}</h3>
+                <h3 className="text-3xl font-black text-gray-800 uppercase tracking-tighter">{selectedCustomer.cName || "Unknown Customer"}</h3>
                 <p className="text-gray-400 font-bold text-xs mt-2 uppercase tracking-[2px]">
-                   {selectedCustomer.membership} &bull; Thành viên từ {selectedCustomer.registeredDate}
+                  {selectedCustomer.membershipTier} &bull; Thành viên từ {selectedCustomer.createdAt}
                 </p>
               </div>
 
@@ -215,15 +213,15 @@ export default function CustomerPage() {
                 <div className="grid grid-cols-3 gap-5">
                   <div className="bg-gray-50 p-5 rounded-3xl text-center border border-transparent hover:border-indigo-100 transition-all">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Điểm tích lũy</p>
-                    <p className="text-2xl font-black text-indigo-600 mt-1">{selectedCustomer.points.toLocaleString()}</p>
+                    <p className="text-2xl font-black text-indigo-600 mt-1">{selectedCustomer.totalPoints?.toLocaleString() || 0}</p>
                   </div>
                   <div className="bg-gray-50 p-5 rounded-3xl text-center border border-transparent hover:border-emerald-100 transition-all">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Đã chi tiêu</p>
-                    <p className="text-2xl font-black text-emerald-600 mt-1">${selectedCustomer.totalSpent}</p>
+                    <p className="text-2xl font-black text-emerald-600 mt-1">${0}</p>
                   </div>
                   <div className="bg-gray-50 p-5 rounded-3xl text-center border-l-4 border-indigo-500 shadow-sm">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Đơn hàng</p>
-                    <p className="text-2xl font-black text-gray-800 mt-1">{selectedCustomer.totalOrders}</p>
+                    <p className="text-2xl font-black text-gray-800 mt-1">{0}</p>
                   </div>
                 </div>
 
@@ -233,9 +231,9 @@ export default function CustomerPage() {
                     <div className="grid grid-cols-1 gap-y-4">
                       <div className="bg-gray-50 px-5 py-4 rounded-2xl border-none">
                         <p className="text-gray-400 text-[10px] uppercase font-black tracking-widest mb-1">Họ và tên</p>
-                        <input 
-                          value={selectedCustomer.name}
-                          onChange={(e) => setSelectedCustomer({...selectedCustomer, name: e.target.value})}
+                        <input
+                          value={selectedCustomer.cName}
+                          onChange={(e) => setSelectedCustomer({ ...selectedCustomer, cName: e.target.value })}
                           className="w-full bg-transparent border-none p-0 text-sm font-bold text-gray-800 focus:ring-0"
                         />
                       </div>
@@ -245,7 +243,7 @@ export default function CustomerPage() {
                       </div>
                       <div className="bg-gray-50 px-5 py-4 rounded-2xl border-none">
                         <p className="text-gray-400 text-[10px] uppercase font-black tracking-widest mb-1">Số điện thoại</p>
-                        <p className="text-sm font-bold text-gray-800">{selectedCustomer.phone}</p>
+                        <p className="text-sm font-bold text-gray-800">{selectedCustomer.phoneNumber}</p>
                       </div>
                     </div>
                   </div>
@@ -256,8 +254,8 @@ export default function CustomerPage() {
                       <button className="flex-1 bg-gray-50 hover:bg-indigo-50 text-gray-700 py-4 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-2 border border-transparent hover:border-indigo-100 uppercase tracking-widest">
                         <Key className="w-4 h-4" /> Đặt lại Pass
                       </button>
-                      <button 
-                        onClick={() => setSelectedCustomer({...selectedCustomer, status: 'Inactive'})}
+                      <button
+                        onClick={() => setSelectedCustomer({ ...selectedCustomer, isActive: false })}
                         className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-700 py-4 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-2 border border-transparent hover:border-rose-200 uppercase tracking-widest"
                       >
                         <Shield className="w-4 h-4" /> Khóa thẻ
@@ -269,7 +267,7 @@ export default function CustomerPage() {
             </div>
 
             <div className="p-8 border-t border-gray-100 bg-white">
-              <button 
+              <button
                 onClick={handleUpdateProfile}
                 disabled={isSaving}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-5 rounded-[24px] font-black shadow-2xl shadow-indigo-100 transition-all flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-widest text-xs"

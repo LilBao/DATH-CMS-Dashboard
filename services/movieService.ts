@@ -1,24 +1,71 @@
 import api from './api';
 
-export type MovieStatus = "Now Showing" | "Ended" | "Coming Soon";
+export interface MovieRequest {
+  mName: string;
+  descript?: string;
+  runTime: number;
+  isDub?: boolean;
+  isSub?: boolean;
+  releaseDate: string;
+  closingDate: string;
+  ageRating: string;
+  posterUrl?: string;
+  trailerUrl?: string;
+  genreIds?: string[];
+  formatIds?: string[];
+  actorIds?: string[];
+}
 
-export interface Movie {
-  id: string;
-  title: string;
-  duration: number;
-  genre: string;
-  status: MovieStatus;
-  posterUrl: string;
-  releaseDate?: string;
-  closeDate?: string;
-  description?: string;
-  cast?: string;
+export interface MovieResponse {
+  movieId: number;
+  mName: string;
+  descript?: string;
+  runTime: number;
+  isDub: boolean;
+  isSub: boolean;
+  slug: string;
+  releaseDate: string;
+  closingDate: string;
+  ageRating: string;
+  posterUrl?: string;
+  trailerUrl?: string;
+  genres: string[];
+  formats: string[];
+  actors: string[];
+  avgRating?: number;
+  reviewCount?: number;
+}
+
+export interface ReviewRequest {
+  movieId: number;
+  rating: number;
+  comment: string;
+}
+
+export interface ReviewResponse {
+  customerName: string;
+  customerAvatar?: string;
+  rating: number;
+  comment: string;
+  reviewDate: string;
 }
 
 export const movieService = {
   // Lấy danh sách phim
-  getAll: async () => {
+  getAll: async (): Promise<MovieResponse[]> => {
     const response = await api.get('/movies');
+    return response.data;
+  },
+
+  // Lấy danh sách đánh giá của phim
+  getReviews: async (movieId: number): Promise<ReviewResponse[]> => {
+    const response = await api.get(`/movies/${movieId}/reviews`);
+    return response.data;
+  },
+
+  // Gửi đánh giá mới
+  addReview: async (review: ReviewRequest): Promise<ReviewResponse> => {
+    const response = await api.post('/reviews', review);
     return response.data;
   },
 
@@ -34,13 +81,13 @@ export const movieService = {
     return await response.json();
   },
   
-  create: async (movieData: any) => {
+  create: async (movieData: MovieRequest): Promise<MovieResponse> => {
     const response = await api.post('/movies', movieData);
     return response.data;
   },
 
   // Lưu phim (Tạo mới hoặc Cập nhật)
-  save: async (data: any, id?: string) => {
+  save: async (data: MovieRequest, id?: string): Promise<MovieResponse> => {
     if (id) {
       const response = await api.put(`/movies/${id}`, data);
       return response.data;
@@ -51,8 +98,7 @@ export const movieService = {
   },
 
   // Xóa phim
-  delete: async (id: string) => {
-    const response = await api.delete(`/movies/${id}`);
-    return response.data;
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/movies/${id}`);
   }
 };

@@ -3,19 +3,42 @@
 import { useState, useEffect } from 'react';
 import { Plus, X, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/authStore';
 
 // Import Services
-import { showtimeService, Showtime } from '@/services/showtimeService';
-import { movieService } from '@/services/movieService';
+import { showtimeService, ShowtimeResponse } from '@/services/showtimeService';
+import { movieService, MovieResponse } from '@/services/movieService';
+import { branchService, BranchResponse } from '@/services/branchService';
 
 import ShowtimeFormModal from '../components/ShowtimeFormModal';
+import { ConfirmModal } from '../components/ui/confirm-modal';
+
+const timeToMinutes = (time: string) => {
+  if (!time) return 0;
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+};
+
+const getShowtimeRange = (st: ShowtimeResponse) => {
+  const start = timeToMinutes(st.startTime);
+  const endMin = timeToMinutes(st.endTime);
+  // Nếu endTime là 00:00 hoặc không có, mặc định cộng 120 phút (2 tiếng)
+  const end = (endMin <= start) ? start + 120 : endMin;
+  return { start, end };
+};
+
+const areOverlapping = (st1: ShowtimeResponse, st2: ShowtimeResponse) => {
+  const r1 = getShowtimeRange(st1);
+  const r2 = getShowtimeRange(st2);
+  return r1.start < r2.end && r2.start < r1.end;
+};
 
 const formatDate = (date: Date) => date.toISOString().split('T')[0];
 
 const getWeekDays = (currentDate: string) => {
   const date = new Date(currentDate);
   const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1); 
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(date.setDate(diff));
 
   return Array.from({ length: 7 }, (_, i) => {
@@ -53,33 +76,42 @@ const generateMonthGrid = (currentDate: string) => {
   return grid;
 };
 
-interface Movie {
-  id: string;
-  title: string;
-  genre: string;
-  duration: number;
-}
-
 export default function ShowtimesPage() {
-  const [showtimes, setShowtimes] = useState<Showtime[]>([]);
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [selectedShowtime, setSelectedShowtime] = useState<Showtime | null>(null);
+  const [showtimes, setShowtimes] = useState<ShowtimeResponse[]>([]);
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeResponse | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState('2026-05-04');
-  const [selectedBranch, setSelectedBranch] = useState('BR-001');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+
+  // State cho Confirm Delete
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
+  const { user } = useAuthStore();
+  const isManager = user?.role === 'MANAGER';
+  const managerBranchId = user?.branchId;
 
   // --- API DATA LOADING USING SERVICES ---
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [stData, mvData] = await Promise.all([
+      const [stData, mvData, brData] = await Promise.all([
         showtimeService.getAll(),
-        movieService.getAll()
+        movieService.getAll(),
+        branchService.getAll()
       ]);
       setShowtimes(Array.isArray(stData) ? stData : []);
       setMovies(Array.isArray(mvData) ? mvData : []);
+      setBranches(Array.isArray(brData) ? brData : []);
+
+      if (isManager && (managerBranchId !== undefined && managerBranchId !== null)) {
+        setSelectedBranch(String(managerBranchId));
+      } else if (Array.isArray(brData) && brData.length > 0 && !selectedBranch) {
+        setSelectedBranch(String(brData[0].branchId));
+      }
     } catch (err) {
       toast.error("Không thể tải dữ liệu từ hệ thống.");
     } finally {
@@ -93,25 +125,26 @@ export default function ShowtimesPage() {
 
   const currentWeek = getWeekDays(selectedDate);
   const monthGrid = generateMonthGrid(selectedDate);
-  const currentBranchShowtimes = showtimes.filter(st => st.branchId === selectedBranch);
+  const currentBranchShowtimes = showtimes.filter(st => st.branchId === Number(selectedBranch));
 
   // --- ACTION HANDLERS ---
   const handleSaveShowtime = async (e: React.FormEvent<HTMLFormElement>, moviePayload: any) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
-    const payload: Partial<Showtime> = {
+
+    const payload: any = {
       movieId: moviePayload.movieId,
-      branchId: selectedBranch,
-      roomId: formData.get('room') as string,
-      date: formData.get('date') as string,
-      time: formData.get('startTime') as string,
-      theme: (selectedShowtime?.theme || ['blue', 'mint', 'lavender', 'red'][Math.floor(Math.random() * 4)]) as any
+      branchId: Number(selectedBranch),
+      roomId: Number(formData.get('room')),
+      day: formData.get('date') as string,
+      startTime: formData.get('startTime') as string,
+      endTime: "00:00", // temp
+      formatName: "2D",
     };
 
     try {
       if (selectedShowtime) {
-        await showtimeService.update(selectedShowtime.id, payload);
+        await showtimeService.update(selectedShowtime.timeId, payload);
         toast.success("Lịch chiếu đã được cập nhật thành công.");
       } else {
         await showtimeService.create(payload);
@@ -124,30 +157,38 @@ export default function ShowtimesPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedShowtime) return;
-    if (!confirm("Bạn có chắc chắn muốn xóa suất chiếu này?")) return;
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedShowtime) return;
     try {
-      await showtimeService.delete(selectedShowtime.id);
-      setShowtimes(prev => prev.filter(s => s.id !== selectedShowtime.id));
+      await showtimeService.delete(selectedShowtime.timeId);
+      setShowtimes(prev => prev.filter(s => s.timeId !== selectedShowtime.timeId));
       toast.success("Đã xóa lịch chiếu khỏi hệ thống.");
       setIsDrawerOpen(false);
+      setIsConfirmOpen(false);
     } catch (err) {
       toast.error("Không thể thực hiện lệnh xóa.");
+      throw err;
     }
   };
 
   // --- DISPLAY HELPERS ---
-  const getStyleForShowtime = (time: string, dayIndex: number, mode: 'day' | 'week') => {
-    if (!time) return {};
-    const [h, m] = time.split(':').map(Number);
-    const startMinutes = (h - 8) * 60 + m;
+  const getStyleForShowtime = (st: ShowtimeResponse, dayIndex: number, mode: 'day' | 'week', colIndex: number, totalCols: number) => {
+    const { start, end } = getShowtimeRange(st);
+    const startMinutes = start - (8 * 60); // Offset by 8 AM
     const topPixel = (startMinutes / 60) * 64;
-    const heightPixel = (120 / 60) * 64; 
-    
-    const leftPercent = mode === 'week' ? (dayIndex / 7) * 100 : 0;
-    const widthCalc = mode === 'week' ? 'calc(14.28% - 8px)' : 'calc(100% - 16px)';
-    const leftCalc = mode === 'week' ? `calc(${leftPercent}% + 4px)` : '8px';
+    const heightPixel = ((end - start) / 60) * 64;
+
+    const baseWidth = mode === 'week' ? (100 / 7) : 100;
+    const itemWidth = baseWidth / totalCols;
+    const leftBase = mode === 'week' ? (dayIndex * (100 / 7)) : 0;
+
+    const leftCalc = `calc(${leftBase + (colIndex * itemWidth)}% + 4px)`;
+    const widthCalc = `calc(${itemWidth}% - 8px)`;
 
     return { top: `${topPixel}px`, height: `${heightPixel}px`, left: leftCalc, width: widthCalc };
   };
@@ -174,8 +215,24 @@ export default function ShowtimesPage() {
 
   // --- VIEW RENDERING ---
   const renderDayView = () => {
-    const dayShowtimes = currentBranchShowtimes.filter(st => st.date === selectedDate);
+    const dayShowtimes = currentBranchShowtimes.filter(st => st.day === selectedDate);
     const dayInfo = currentWeek.find(d => d.fullDate === selectedDate) || currentWeek[0];
+
+    // Overlap logic
+    const sorted = [...dayShowtimes].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const columns: ShowtimeResponse[][] = [];
+    sorted.forEach(st => {
+      let placed = false;
+      for (let i = 0; i < columns.length; i++) {
+        const last = columns[i][columns[i].length - 1];
+        if (!areOverlapping(last, st)) {
+          columns[i].push(st);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) columns.push([st]);
+    });
 
     return (
       <>
@@ -198,27 +255,29 @@ export default function ShowtimesPage() {
             <div className="absolute inset-0 pointer-events-none flex flex-col">
               {Array.from({ length: 16 }).map((_, i) => <div key={i} className="h-[64px] border-b border-gray-100 border-dashed w-full" />)}
             </div>
-            {dayShowtimes.map((st) => {
-              const movie = movies.find(m => m.id === st.movieId);
-              const style = getStyleForShowtime(st.time, 0, 'day');
-              const textColor = getTextColor(st.theme, st.isConflict);
-              return (
-                <div key={st.id} style={style} onClick={() => { setSelectedShowtime(st); setIsDrawerOpen(true); }}
-                  className={`absolute rounded-xl p-4 flex flex-col justify-between cursor-pointer hover:brightness-95 transition-all group ${getThemeClasses(st.theme, st.isConflict)}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className={`font-bold text-sm leading-tight mb-2 ${textColor}`}>{movie?.title || 'Unknown'}</h3>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="bg-white/50 text-gray-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">{movie?.genre || 'STD'}</span>
-                        <span className={`text-xs font-medium ${textColor} opacity-80`}>{st.roomId}</span>
+            {columns.map((col, colIndex) => (
+              col.map((st, i) => {
+                const movie = movies.find(m => m.movieId === st.movieId);
+                const textColor = getTextColor('blue', false);
+                const style = getStyleForShowtime(st, 0, 'day', colIndex, columns.length);
+                return (
+                  <div key={st.timeId || `col-${colIndex}-${i}`} style={style} onClick={() => { setSelectedShowtime(st); setIsDrawerOpen(true); }}
+                    className={`absolute rounded-xl p-4 flex flex-col justify-between cursor-pointer hover:brightness-95 transition-all group ${getThemeClasses('blue', false)}`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="overflow-hidden">
+                        <h3 className={`font-bold text-sm leading-tight mb-2 truncate ${textColor}`}>{st.movieName || movie?.mName || 'Unknown'}</h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="bg-white/50 text-gray-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">{movie?.genres?.[0] || 'STD'}</span>
+                          <span className={`text-xs font-medium ${textColor} opacity-80`}>Room {st.roomId}</span>
+                        </div>
                       </div>
+                      <p className={`font-bold text-xs ${textColor}`}>{st.startTime}</p>
                     </div>
-                    <p className={`font-bold text-xs ${textColor}`}>{st.time}</p>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ))}
           </div>
         </div>
       </>
@@ -257,27 +316,45 @@ export default function ShowtimesPage() {
             <div className="absolute inset-0 pointer-events-none flex flex-col">
               {Array.from({ length: 16 }).map((_, i) => <div key={i} className="h-[64px] border-b border-gray-100 border-dashed w-full" />)}
             </div>
-            {currentBranchShowtimes.map((st) => {
-              const dayIndex = currentWeek.findIndex(d => d.fullDate === st.date);
-              if (dayIndex === -1) return null;
-              const movie = movies.find(m => m.id === st.movieId);
-              const style = getStyleForShowtime(st.time, dayIndex, 'week');
-              const textColor = getTextColor(st.theme, st.isConflict);
+            {currentWeek.map((day, dayIndex) => {
+              const dayShowtimes = currentBranchShowtimes.filter(st => st.day === day.fullDate);
+              const sorted = [...dayShowtimes].sort((a, b) => a.startTime.localeCompare(b.startTime));
+              const columns: ShowtimeResponse[][] = [];
+              sorted.forEach(st => {
+                let placed = false;
+                for (let i = 0; i < columns.length; i++) {
+                  const last = columns[i][columns[i].length - 1];
+                  if (!areOverlapping(last, st)) {
+                    columns[i].push(st);
+                    placed = true;
+                    break;
+                  }
+                }
+                if (!placed) columns.push([st]);
+              });
 
-              return (
-                <div key={st.id} style={style} onClick={() => { setSelectedShowtime(st); setIsDrawerOpen(true); }}
-                  className={`absolute rounded-xl p-3 flex flex-col justify-between cursor-pointer hover:brightness-95 transition-all group ${getThemeClasses(st.theme, st.isConflict)}`}
-                >
-                  <div>
-                    <h3 className={`font-bold text-xs leading-tight mb-1.5 line-clamp-2 ${textColor}`}>{movie?.title || 'Unknown'}</h3>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="bg-white/50 text-gray-800 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">{movie?.genre || 'STD'}</span>
-                      <span className={`text-[10px] font-medium ${textColor} opacity-80`}>{st.roomId}</span>
+              return columns.map((col, colIndex) => (
+                col.map((st, i) => {
+                  const movie = movies.find(m => m.movieId === st.movieId);
+                  const style = getStyleForShowtime(st, dayIndex, 'week', colIndex, columns.length);
+                  const textColor = getTextColor('blue', false);
+
+                  return (
+                    <div key={st.timeId || `col-${dayIndex}-${colIndex}-${i}`} style={style} onClick={() => { setSelectedShowtime(st); setIsDrawerOpen(true); }}
+                      className={`absolute rounded-xl p-3 flex flex-col justify-between cursor-pointer hover:brightness-95 transition-all group ${getThemeClasses('blue', false)}`}
+                    >
+                      <div className="overflow-hidden">
+                        <h3 className={`font-bold text-[10px] leading-tight mb-1.5 line-clamp-2 ${textColor}`}>{st.movieName || movie?.mName || 'Unknown'}</h3>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="bg-white/50 text-gray-800 text-[8px] font-bold px-1 py-0.5 rounded uppercase">{movie?.genres?.[0] || 'STD'}</span>
+                          <span className={`text-[9px] font-medium ${textColor} opacity-80`}>R{st.roomId}</span>
+                        </div>
+                      </div>
+                      <p className={`font-bold text-[9px] ${textColor}`}>{st.startTime}</p>
                     </div>
-                  </div>
-                  <p className={`font-bold text-[10px] ${textColor}`}>{st.time}</p>
-                </div>
-              );
+                  );
+                })
+              ));
             })}
           </div>
         </div>
@@ -295,11 +372,11 @@ export default function ShowtimesPage() {
         </div>
         <div className="flex-1 grid grid-cols-7 grid-rows-6 gap-px bg-gray-200">
           {monthGrid.map((cell, index) => {
-            const dayShowtimes = currentBranchShowtimes.filter(st => st.date === cell.fullDate);
+            const dayShowtimes = currentBranchShowtimes.filter(st => st.day === cell.fullDate);
             const isSelected = cell.fullDate === selectedDate;
-            
+
             return (
-              <div key={index} onClick={() => { if(cell.isCurrentMonth) setSelectedDate(cell.fullDate); }}
+              <div key={index} onClick={() => { if (cell.isCurrentMonth) setSelectedDate(cell.fullDate); }}
                 className={`bg-white p-2 min-h-[120px] overflow-y-auto cursor-pointer hover:bg-gray-50 transition-colors ${!cell.isCurrentMonth ? 'opacity-30' : ''} ${isSelected ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/20' : ''}`}
               >
                 <div className="flex justify-between items-start mb-2">
@@ -307,13 +384,13 @@ export default function ShowtimesPage() {
                   {dayShowtimes.length > 0 && <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 rounded">{dayShowtimes.length}</span>}
                 </div>
                 <div className="space-y-1">
-                  {dayShowtimes.map(st => {
-                    const movie = movies.find(m => m.id === st.movieId);
+                  {dayShowtimes.map((st, i) => {
+                    const movie = movies.find(m => m.movieId === st.movieId);
                     return (
-                      <div key={st.id} onClick={(e) => { e.stopPropagation(); setSelectedShowtime(st); setIsDrawerOpen(true); }}
+                      <div key={st.timeId || i} onClick={(e) => { e.stopPropagation(); setSelectedShowtime(st); setIsDrawerOpen(true); }}
                         className={`text-[9px] px-1.5 py-1 rounded truncate font-bold bg-indigo-50 text-indigo-700 border-l-2 border-indigo-500`}
                       >
-                        {st.time} - {movie?.title || 'Movie'}
+                        {st.startTime} - {st.movieName || movie?.mName || 'Movie'}
                       </div>
                     );
                   })}
@@ -336,18 +413,21 @@ export default function ShowtimesPage() {
 
   return (
     <div className="relative w-full h-[calc(100vh-100px)] overflow-hidden bg-[#f7f9fb] flex rounded-2xl border border-gray-200 shadow-sm">
-      
+
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* HEADER */}
         <div className="bg-white px-8 py-5 border-b border-gray-200 flex justify-between items-center z-10 shadow-sm">
           <div>
-            <div className="relative flex items-center gap-2 text-[11px] text-indigo-500 font-bold tracking-[2px] mb-1 cursor-pointer group">
-              <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full">
-                <option value="BR-001">GRAND PLAZA BRANCH</option>
-                <option value="BR-002">STARLIGHT BRANCH</option>
-              </select>
-              <span className="uppercase">{selectedBranch} BRANCH</span>
-              <ChevronDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
+            <div className={`relative flex items-center gap-2 text-[11px] text-indigo-500 font-bold tracking-[2px] mb-1 group ${isManager ? 'opacity-80' : 'cursor-pointer'}`}>
+              {!isManager && (
+                <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full">
+                  {branches.map(br => (
+                    <option key={br.branchId} value={String(br.branchId)}>{br.bName.toUpperCase()}</option>
+                  ))}
+                </select>
+              )}
+              <span className="uppercase">{branches.find(b => String(b.branchId) === selectedBranch)?.bName || 'SELECT BRANCH'}</span>
+              {!isManager && <ChevronDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />}
             </div>
             <h1 className="text-2xl font-black text-[#2d3337] tracking-tight">{viewMode === 'week' ? "Weekly Programming" : selectedDate}</h1>
           </div>
@@ -375,7 +455,7 @@ export default function ShowtimesPage() {
       </div>
 
       {/* FORM MODAL COMPONENT */}
-      <ShowtimeFormModal 
+      <ShowtimeFormModal
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         selectedShowtime={selectedShowtime}
@@ -386,6 +466,13 @@ export default function ShowtimesPage() {
         onDelete={handleDelete}
       />
 
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Xác nhận xóa suất chiếu"
+        description={`Bạn có chắc chắn muốn xóa suất chiếu này? Hành động này sẽ gỡ bỏ lịch chiếu khỏi hệ thống và có thể ảnh hưởng đến các đơn hàng liên quan.`}
+      />
     </div>
   );
 }

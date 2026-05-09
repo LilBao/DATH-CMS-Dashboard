@@ -9,25 +9,34 @@ import {
   Trash2, Edit3, QrCode, CreditCard
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { orderService, Order } from '@/services/orderService';
+import { orderService, OrderResponse } from '@/services/orderService';
+import { useAuthStore } from '@/stores/authStore';
 import OrderFormModal from '../components/OrderFormModal';
+import { ConfirmModal } from '../components/ui/confirm-modal';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   // State cho Modal Add/Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderResponse | null>(null);
+  
+  // State cho Confirm Delete
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<number | null>(null);
+
+  const { user } = useAuthStore();
+  const isManager = user?.role === 'MANAGER';
+  const managerBranchId = user?.branchId;
 
   // Fetch dữ liệu từ Service
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
       const data = await orderService.getAll();
-      const rawOrders = Array.isArray(data) ? data : data.data ?? [];
-      setOrders(rawOrders);
+      setOrders(data);
     } catch (error) {
       toast.error("Không thể nạp danh sách hóa đơn từ máy chủ.");
     } finally {
@@ -40,23 +49,29 @@ export default function OrdersPage() {
   }, []);
 
   // Chức năng Xóa
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa hóa đơn này?")) return;
+  const handleDelete = (id: number) => {
+    setOrderToDelete(id);
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (orderToDelete === null) return;
     try {
-      await orderService.delete(id);
+      await orderService.delete(orderToDelete);
       toast.success("Đã xóa hóa đơn thành công.");
-      setOrders(prev => prev.filter(o => o.id !== id));
+      setOrders(prev => prev.filter(o => o.orderId !== orderToDelete));
     } catch (error) {
       toast.error("Lỗi khi xóa hóa đơn.");
+      throw error;
     }
   };
 
   // Chức năng cập nhật trạng thái nhanh
-  const handleStatusChange = async (id: string, newStatus: Order['status']) => {
+  const handleStatusChange = async (id: number, newStatus: string) => {
     try {
       await orderService.updateStatus(id, newStatus);
       toast.success("Đã cập nhật trạng thái đơn hàng.");
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+      setOrders(prev => prev.map(o => o.orderId === id ? { ...o, orderStatus: newStatus } : o));
     } catch (error) {
       toast.error("Không thể cập nhật trạng thái.");
     }
@@ -64,18 +79,17 @@ export default function OrdersPage() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order =>
-      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.id.toString().toLowerCase().includes(searchQuery.toLowerCase())
+      order.orderId.toString().toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [orders, searchQuery]);
 
   const stats = useMemo(() => {
     const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
-    const totalTickets = orders.reduce((sum, order) => sum + (order.ticketQuantity || 0), 0);
+    const totalTickets = orders.reduce((sum, order) => sum + (order.ticketDetails?.length || 0), 0);
     return {
       revenue: totalRevenue.toLocaleString('en-US', { style: 'currency', currency: 'USD' }),
       tickets: totalTickets,
-      pending: orders.filter(o => o.status === 'Pending').length
+      pending: orders.filter(o => o.orderStatus === 'Pending').length
     };
   }, [orders]);
 
@@ -168,19 +182,19 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 font-bold">
-              {filteredOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer">
+              {filteredOrders.map((order, i) => (
+                <tr key={order.orderId || i} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer">
                   <td className="px-8 py-5 text-center">
-                    <span className="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-3 py-1 rounded-lg">#{order.id}</span>
+                    <span className="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-3 py-1 rounded-lg">#{order.orderId}</span>
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-indigo-100 uppercase">
-                        {order.customerName.charAt(0)}
+                        K
                       </div>
                       <div>
-                        <p className="text-sm font-black text-gray-800 leading-tight">{order.customerName}</p>
-                        <p className="text-[11px] text-gray-400 font-medium">{order.customerEmail}</p>
+                        <p className="text-sm font-black text-gray-800 leading-tight">Khách Hàng</p>
+                        <p className="text-[11px] text-gray-400 font-medium">Ẩn danh</p>
                       </div>
                     </div>
                   </td>
@@ -189,17 +203,21 @@ export default function OrdersPage() {
                   </td>
                   <td className="px-8 py-5">
                     <select
-                      value={order.status}
-                      onChange={(e) => handleStatusChange(order.id, e.target.value as any)}
+                      value={order.orderStatus}
+                      onChange={(e) => handleStatusChange(order.orderId, e.target.value)}
                       onClick={(e) => e.stopPropagation()}
-                      className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border-none outline-none cursor-pointer ${order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                          order.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                      className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border-none outline-none cursor-pointer ${order.orderStatus === 'PAID' || order.orderStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                          order.orderStatus === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                            order.orderStatus === 'CANCELLED' ? 'bg-rose-100 text-rose-700' :
+                              'bg-gray-100 text-gray-700'
                         }`}
                     >
-                      <option value="Pending">Pending</option>
-                      <option value="Completed">Completed</option>
+                      <option value="PAID">PAID</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="CANCELLED">CANCELLED</option>
                       <option value="Refunded">Refunded</option>
                     </select>
+
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500 bg-gray-100 w-fit px-3 py-1.5 rounded-lg border border-gray-200/50">
@@ -208,7 +226,7 @@ export default function OrdersPage() {
                     </div>
                   </td>
                   <td className="px-8 py-5 text-[11px] font-bold text-gray-500 uppercase tracking-tight">
-                    {order.time}
+                    {order.orderTime}
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -219,7 +237,7 @@ export default function OrdersPage() {
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(order.orderId); }}
                         className="p-2.5 bg-white shadow-sm rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-100" title="Xóa"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -240,6 +258,13 @@ export default function OrdersPage() {
         onSuccess={fetchOrders}
         initialData={selectedOrder}
       />
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Xác nhận xóa hóa đơn"
+        description={`Bạn có chắc chắn muốn xóa hóa đơn #${orderToDelete}? Hành động này sẽ gỡ bỏ vĩnh viễn giao dịch khỏi hệ thống.`}
+      />
     </div>
   );
-}
+}
