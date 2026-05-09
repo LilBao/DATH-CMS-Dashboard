@@ -25,12 +25,25 @@
     {
       "id": "m6",
       "title": "Avatar 3: Fire and Ash",
-      "duration": 192,
+      "duration": 193,
       "genre": "Action, Adventure",
       "status": "Coming Soon",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/t6HIqrHeCPu4w108r94yNlY7N1y.jpg",
       "releaseDate": "2025-12-19",
       "closeDate": "2026-03-31",
-      "posterUrl": "https://image.tmdb.org/t/p/w500/t6HIqrHeCPu4w108r94yNlY7N1y.jpg"
+      "description": "",
+      "cast": ""
+    },
+    {
+      "title": "Superman (2025)",
+      "duration": 192,
+      "genre": "Hành động",
+      "status": "Coming Soon",
+      "posterUrl": "/posters/1778258905536-MV5BZjFhZmU5NzUtZTg4Zi00ZjRjLWI0YmQtODk2MzI4YjNhYTdkXkEyXkFqcGc@._V1_.jpg",
+      "releaseDate": "2026-05-13",
+      "description": "ad",
+      "cast": "ad",
+      "id": "zLGnajg"
     }
   ],
   "employees": [
@@ -172,25 +185,28 @@
       "id": "st1",
       "movieId": "m1",
       "branchId": "BR-001",
-      "roomId": "Room 1",
-      "time": "19:30",
-      "date": "2026-05-01"
+      "roomId": "r1",
+      "date": "2026-05-04",
+      "time": "14:30",
+      "theme": "blue"
     },
     {
-      "movieId": "m2",
+      "id": "st2",
+      "movieId": "zLGnajg",
       "branchId": "BR-001",
-      "roomId": "Room 2",
-      "date": "2026-05-01",
-      "time": "21:00",
-      "id": "st2"
+      "roomId": "r2",
+      "date": "2026-05-04",
+      "time": "19:00",
+      "theme": "mint"
     },
     {
+      "id": "st3",
       "movieId": "m1",
-      "branchId": "Central Mall",
-      "roomId": "Room 01",
-      "date": "2023-10-25",
-      "time": "16:35",
-      "id": "9KBzRB5v2hU"
+      "branchId": "BR-002",
+      "roomId": "r3",
+      "date": "2026-05-05",
+      "time": "10:00",
+      "theme": "lavender"
     }
   ],
   "shifts": [
@@ -221,7 +237,7 @@
       "name": "Hall 04",
       "type": "IMAX",
       "status": "Now Playing",
-      "capacity": 98,
+      "capacity": 96,
       "branchId": "BR-001",
       "layout": [
         {
@@ -252,13 +268,13 @@
           "id": "A5",
           "row": "A",
           "col": 5,
-          "status": "available"
+          "status": "disabled"
         },
         {
           "id": "A6",
           "row": "A",
           "col": 6,
-          "status": "available"
+          "status": "disabled"
         },
         {
           "id": "A7",

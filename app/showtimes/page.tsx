@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Calendar as CalendarIcon, Clock, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, X, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Import Services
+import { showtimeService, Showtime } from '@/services/showtimeService';
+import { movieService } from '@/services/movieService';
 
 import ShowtimeFormModal from '../components/ShowtimeFormModal';
 
@@ -49,32 +53,12 @@ const generateMonthGrid = (currentDate: string) => {
   return grid;
 };
 
-const timeToMinutes = (timeStr: string) => {
-  if (!timeStr) return 0;
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  return hours * 60 + minutes;
-};
-
 interface Movie {
   id: string;
   title: string;
   genre: string;
   duration: number;
 }
-
-interface Showtime {
-  id: string;
-  movieId: string;
-  branchId: string;
-  roomId: string;
-  date: string;
-  time: string;
-  theme?: 'mint' | 'lavender' | 'blue' | 'red';
-  isConflict?: boolean;
-}
-
-const SHOWTIMES_API = 'http://localhost:3001/showtimes';
-const MOVIES_API = 'http://localhost:3001/movies';
 
 export default function ShowtimesPage() {
   const [showtimes, setShowtimes] = useState<Showtime[]>([]);
@@ -86,21 +70,24 @@ export default function ShowtimesPage() {
   const [selectedBranch, setSelectedBranch] = useState('BR-001');
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- API DATA LOADING ---
+  // --- API DATA LOADING USING SERVICES ---
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [stData, mvData] = await Promise.all([
+        showtimeService.getAll(),
+        movieService.getAll()
+      ]);
+      setShowtimes(Array.isArray(stData) ? stData : []);
+      setMovies(Array.isArray(mvData) ? mvData : []);
+    } catch (err) {
+      toast.error("Không thể tải dữ liệu từ hệ thống.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [stRes, mvRes] = await Promise.all([fetch(SHOWTIMES_API), fetch(MOVIES_API)]);
-        const stData = await stRes.json();
-        const mvData = await mvRes.json();
-        setShowtimes(Array.isArray(stData) ? stData : []);
-        setMovies(Array.isArray(mvData) ? mvData : []);
-      } catch (err) {
-        toast.error("Không thể tải dữ liệu từ API server.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
     loadData();
   }, []);
 
@@ -113,32 +100,27 @@ export default function ShowtimesPage() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    const payload = {
+    const payload: Partial<Showtime> = {
       movieId: moviePayload.movieId,
       branchId: selectedBranch,
-      roomId: formData.get('room'),
-      date: formData.get('date'),
-      time: formData.get('startTime'),
+      roomId: formData.get('room') as string,
+      date: formData.get('date') as string,
+      time: formData.get('startTime') as string,
+      theme: (selectedShowtime?.theme || ['blue', 'mint', 'lavender', 'red'][Math.floor(Math.random() * 4)]) as any
     };
 
-    const method = selectedShowtime ? 'PUT' : 'POST';
-    const url = selectedShowtime ? `${SHOWTIMES_API}/${selectedShowtime.id}` : SHOWTIMES_API;
-
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
+      if (selectedShowtime) {
+        await showtimeService.update(selectedShowtime.id, payload);
         toast.success("Lịch chiếu đã được cập nhật thành công.");
-        const updated = await fetch(SHOWTIMES_API);
-        setShowtimes(await updated.json());
-        setIsDrawerOpen(false);
+      } else {
+        await showtimeService.create(payload);
+        toast.success("Lịch chiếu mới đã được tạo thành công.");
       }
+      await loadData(); // Reload data to sync UI
+      setIsDrawerOpen(false);
     } catch (err) {
-      toast.error("Lỗi khi đồng bộ dữ liệu.");
+      toast.error("Lỗi khi lưu dữ liệu lên hệ thống.");
     }
   };
 
@@ -146,12 +128,10 @@ export default function ShowtimesPage() {
     if (!selectedShowtime) return;
     if (!confirm("Bạn có chắc chắn muốn xóa suất chiếu này?")) return;
     try {
-      const res = await fetch(`${SHOWTIMES_API}/${selectedShowtime.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setShowtimes(prev => prev.filter(s => s.id !== selectedShowtime.id));
-        toast.success("Đã xóa lịch chiếu khỏi hệ thống.");
-        setIsDrawerOpen(false);
-      }
+      await showtimeService.delete(selectedShowtime.id);
+      setShowtimes(prev => prev.filter(s => s.id !== selectedShowtime.id));
+      toast.success("Đã xóa lịch chiếu khỏi hệ thống.");
+      setIsDrawerOpen(false);
     } catch (err) {
       toast.error("Không thể thực hiện lệnh xóa.");
     }
@@ -347,7 +327,12 @@ export default function ShowtimesPage() {
   };
 
   // --- FINAL RENDER ---
-  if (isLoading) return <div className="w-full h-screen flex items-center justify-center font-black text-gray-300 animate-pulse uppercase tracking-[4px]">Syncing Cinemas...</div>;
+  if (isLoading) return (
+    <div className="w-full h-screen flex flex-col items-center justify-center font-black text-gray-300 animate-pulse uppercase tracking-[4px]">
+      <Loader2 className="w-12 h-12 animate-spin mb-4 text-indigo-500" />
+      Syncing Cinemas...
+    </div>
+  );
 
   return (
     <div className="relative w-full h-[calc(100vh-100px)] overflow-hidden bg-[#f7f9fb] flex rounded-2xl border border-gray-200 shadow-sm">
