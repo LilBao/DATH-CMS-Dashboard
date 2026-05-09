@@ -8,12 +8,15 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { productService, Product } from '@/services/productService';
+import ProductFormModal from '../components/ProductFormModal';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [activeTab, setActiveTab] = useState<'Food' | 'Merchandise'>('Food');
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [productToEdit, setProductToEdit] = useState<Product | null>(null);
 
   // Fetch dữ liệu thực tế
   const fetchProducts = async () => {
@@ -32,6 +35,33 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  const handleSaveProduct = async (data: Partial<Product>) => {
+    try {
+      if (productToEdit) {
+        await productService.update(productToEdit.id, data);
+        toast.success("Cập nhật sản phẩm thành công!");
+      } else {
+        await productService.create(data);
+        toast.success("Thêm sản phẩm mới thành công!");
+      }
+      fetchProducts();
+      setIsModalOpen(false);
+    } catch (error) {
+      toast.error("Lỗi khi lưu sản phẩm.");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa sản phẩm này?")) return;
+    try {
+      await productService.delete(id);
+      toast.success("Đã xóa sản phẩm.");
+      fetchProducts();
+    } catch (error) {
+      toast.error("Lỗi khi xóa sản phẩm.");
+    }
+  };
 
   // Tính toán số liệu thống kê
   const stats = useMemo(() => {
@@ -81,7 +111,10 @@ export default function ProductsPage() {
           <h1 className="text-[44px] font-black text-[#2d3337] tracking-tighter leading-tight uppercase">Products</h1>
           <p className="text-gray-500 font-medium">Quản lý kho hàng từ bắp nước đến các vật phẩm sưu tầm.</p>
         </div>
-        <button className="bg-[#4a4bd7] hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100 transition-all flex items-center gap-2 uppercase text-xs">
+        <button 
+          onClick={() => { setProductToEdit(null); setIsModalOpen(true); }}
+          className="bg-[#4a4bd7] hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100 transition-all flex items-center gap-2 uppercase text-xs"
+        >
           <Plus className="w-5 h-5" /> Thêm sản phẩm
         </button>
       </div>
@@ -218,10 +251,16 @@ export default function ProductsPage() {
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2.5 text-gray-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all shadow-sm border border-transparent hover:border-indigo-100">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setProductToEdit(p); setIsModalOpen(true); }}
+                        className="p-2.5 text-gray-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all shadow-sm border border-transparent hover:border-indigo-100"
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button className="p-2.5 text-gray-400 hover:text-rose-600 hover:bg-white rounded-xl transition-all shadow-sm border border-transparent hover:border-rose-100">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                        className="p-2.5 text-gray-400 hover:text-rose-600 hover:bg-white rounded-xl transition-all shadow-sm border border-transparent hover:border-rose-100"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -249,6 +288,13 @@ export default function ProductsPage() {
           </div>
         </div>
       </div>
+
+      <ProductFormModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleSaveProduct}
+        initialData={productToEdit}
+      />
     </div>
   );
 }

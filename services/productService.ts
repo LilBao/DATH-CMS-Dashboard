@@ -19,6 +19,18 @@ export const productService = {
     return response.data;
   },
 
+  // Lấy chi tiết một sản phẩm
+  getById: async (id: string) => {
+    const response = await api.get(`/products/${id}`);
+    return response.data;
+  },
+
+  // Tạo sản phẩm mới
+  create: async (data: Partial<Product>) => {
+    const response = await api.post('/products', data);
+    return response.data;
+  },
+
   // Cập nhật thông tin sản phẩm (bao gồm cả số lượng tồn kho)
   update: async (id: string, data: Partial<Product>) => {
     const response = await api.patch(`/products/${id}`, data);

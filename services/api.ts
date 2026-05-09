@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
+import { toast } from 'sonner';
 
 // Cấu hình BaseURL của BE. Tuỳ vào môi trường sẽ dùng .env thích hợp.
 const api = axios.create({
@@ -61,6 +62,20 @@ api.interceptors.response.use(
         window.location.href = '/login'; // Chuyển về trang đăng nhập
         return Promise.reject(refreshError);
       }
+    }
+
+    // Hiển thị lỗi thông qua toast (trừ trường hợp 401 đã xử lý ở trên hoặc đang refresh)
+    const errorMessage = 
+      error.response?.data?.message || 
+      error.response?.data?.error || 
+      error.message || 
+      'Đã có lỗi xảy ra';
+    
+    // Chỉ hiển thị toast nếu không phải là lỗi 401 (đã được xử lý chuyển hướng hoặc refresh)
+    if (error.response?.status !== 401) {
+      toast.error('Lỗi hệ thống', {
+        description: errorMessage,
+      });
     }
 
     return Promise.reject(error);

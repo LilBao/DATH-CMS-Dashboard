@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { authService, LoginPayload } from "@/services/authService"; 
+import { authService, LoginPayload } from "@/services/authService";
+import { useAuthStore } from "@/stores/authStore";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,6 +15,15 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { isAuthenticated, logout, setTokens, setUser } = useAuthStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isAuthenticated()) {
+      toast.info("Tự động đăng xuất để chuyển đổi tài khoản.");
+      logout();
+    }
+  }, [isAuthenticated, logout]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,24 +39,29 @@ export default function LoginPage() {
     try {
       // Gọi API Login
       const loginResponse = await authService.login(payload);
-      
+      const { accessToken, refreshToken } = loginResponse.data;
+
+      // Lưu token vào Store (Cũng tự động lưu vào Cookie)
+      setTokens(accessToken, refreshToken);
+
       // Lấy thông tin chi tiết của User vừa login (Sử dụng endpoint /auth/me)
       const userRes = await authService.getMe();
       const userData = userRes.data;
 
-      // Lưu thông tin vào localStorage để Navigation hiển thị
-      localStorage.setItem("user", JSON.stringify({
+      // Lưu thông tin vào Store
+      setUser({
         name: userData.fullName || userData.name,
         role: userData.role || "Staff",
-        avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.name}`,
-        email: userData.email
-      }));
+        avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.fullName || userData.name}`,
+        email: userData.email,
+        id: userData.id
+      });
 
       toast.success("Đăng nhập thành công!");
-      
+
       // Điều hướng về Dashboard
-      window.location.href = "/";
-      
+      router.push("/");
+
     } catch (error: any) {
       // Xử lý lỗi từ Axios
       const message = error.response?.data?.message || "Email hoặc mật khẩu không đúng";

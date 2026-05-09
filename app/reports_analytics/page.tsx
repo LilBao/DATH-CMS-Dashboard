@@ -6,6 +6,7 @@ import {
   DollarSign, Ticket, Users, Activity, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportService } from '@/services/reportService';
 import { orderService } from '@/services/orderService';
 import { movieService } from '@/services/movieService';
 import { productService } from '@/services/productService';
@@ -18,23 +19,32 @@ export default function ReportsAnalyticsPage() {
   const [data, setData] = useState({
     orders: [],
     movies: [],
-    products: []
+    products: [],
+    revenueStats: { daily: [], movie: [], occupancy: [] }
   });
 
   // Fetch toàn bộ dữ liệu thực từ Backend
   const loadAnalyticsData = async () => {
     try {
       setIsLoading(true);
-      const [orders, movies, products] = await Promise.all([
+      const [orders, movies, products, dailyRev, movieRev, occupancy] = await Promise.all([
         orderService.getAll(),
         movieService.getAll(),
-        productService.getAll()
+        productService.getAll(),
+        reportService.getDailyRevenue(),
+        reportService.getMovieRevenue(),
+        reportService.getOccupancyRate()
       ]);
       
       setData({
         orders: Array.isArray(orders) ? orders : orders.data ?? [],
         movies: Array.isArray(movies) ? movies : movies.data ?? [],
-        products: Array.isArray(products) ? products : products.data ?? []
+        products: Array.isArray(products) ? products : products.data ?? [],
+        revenueStats: {
+          daily: Array.isArray(dailyRev) ? dailyRev : dailyRev.data ?? [],
+          movie: Array.isArray(movieRev) ? movieRev : movieRev.data ?? [],
+          occupancy: Array.isArray(occupancy) ? occupancy : occupancy.data ?? []
+        }
       });
     } catch (error) {
       toast.error("Không thể nạp dữ liệu báo cáo từ máy chủ.");

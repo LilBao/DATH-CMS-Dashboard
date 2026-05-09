@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  Search, Plus, FileText, Clock, 
-  ChevronRight, Download, 
-  Ticket, Printer, 
+import {
+  Search, Plus, FileText, Clock,
+  ChevronRight, Download,
+  Ticket, Printer,
   RefreshCcw, DollarSign, Loader2,
-  Trash2, Edit3
+  Trash2, Edit3, QrCode, CreditCard
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { orderService, Order } from '@/services/orderService';
@@ -16,7 +16,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // State cho Modal Add/Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -90,7 +90,7 @@ export default function OrdersPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto min-h-screen pb-20 px-4">
-      
+
       {/* Header Section */}
       <div className="flex items-end justify-between mb-10 pt-12">
         <div>
@@ -102,7 +102,7 @@ export default function OrdersPage() {
           <button className="bg-white border border-gray-100 text-gray-700 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-sm hover:bg-gray-50 transition-all text-xs uppercase tracking-wider">
             <Download className="w-4 h-4" /> Xuất báo cáo
           </button>
-          <button 
+          <button
             onClick={() => { setSelectedOrder(null); setIsModalOpen(true); }}
             className="bg-[#4a4bd7] hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-indigo-100 transition-all uppercase text-xs tracking-widest active:scale-95"
           >
@@ -144,9 +144,9 @@ export default function OrdersPage() {
           <h2 className="text-xl font-black text-gray-800 tracking-tight uppercase">Giao dịch gần đây</h2>
           <div className="relative w-80">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Tìm theo ID hoặc tên khách..." 
+            <input
+              type="text"
+              placeholder="Tìm theo ID hoặc tên khách..."
               className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -188,14 +188,13 @@ export default function OrdersPage() {
                     {order.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
                   </td>
                   <td className="px-8 py-5">
-                    <select 
+                    <select
                       value={order.status}
                       onChange={(e) => handleStatusChange(order.id, e.target.value as any)}
                       onClick={(e) => e.stopPropagation()}
-                      className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border-none outline-none cursor-pointer ${
-                        order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 
-                        order.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
-                      }`}
+                      className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border-none outline-none cursor-pointer ${order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                          order.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                        }`}
                     >
                       <option value="Pending">Pending</option>
                       <option value="Completed">Completed</option>
@@ -213,13 +212,13 @@ export default function OrdersPage() {
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); setIsModalOpen(true); }}
                         className="p-2.5 bg-white shadow-sm rounded-xl text-indigo-600 hover:bg-indigo-50 border border-indigo-100" title="Chỉnh sửa"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
                         className="p-2.5 bg-white shadow-sm rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-100" title="Xóa"
                       >
@@ -235,7 +234,7 @@ export default function OrdersPage() {
       </div>
 
       {/* OrderFormModal */}
-      <OrderFormModal 
+      <OrderFormModal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedOrder(null); }}
         onSuccess={fetchOrders}

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { employeeService, Employee } from '@/services/employeeService';
+import FileUpload from '../components/FileUpload';
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -19,6 +20,15 @@ export default function EmployeesPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (selectedEmployee) {
+      setAvatarUrl(selectedEmployee.avatarUrl || '');
+    } else {
+      setAvatarUrl('');
+    }
+  }, [selectedEmployee]);
 
   // Fetch dữ liệu thực từ Backend
   const fetchEmployees = async () => {
@@ -69,8 +79,7 @@ export default function EmployeesPage() {
       role: formData.get('role') as string,
       branchId: formData.get('branchId') as string,
       salary: Number(formData.get('salary')),
-      // Avatar tự động tạo theo tên nếu chưa có ảnh thực tế
-      avatarUrl: selectedEmployee?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.get('name')}`
+      avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.get('name')}`
     };
 
     try {
@@ -171,8 +180,12 @@ export default function EmployeesPage() {
                 <tr key={emp.id} className="hover:bg-indigo-50/30 transition-colors group">
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100">
-                        {emp.name.charAt(0)}
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 overflow-hidden">
+                        {emp.avatarUrl ? (
+                          <img src={emp.avatarUrl} alt={emp.name} className="w-full h-full object-cover" />
+                        ) : (
+                          emp.name.charAt(0)
+                        )}
                       </div>
                       <div>
                         <p className="text-sm font-black text-gray-800 leading-tight">{emp.name}</p>
@@ -241,6 +254,15 @@ export default function EmployeesPage() {
             </div>
 
             <form onSubmit={handleSaveForm} className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-center block">Ảnh đại diện</label>
+                <FileUpload 
+                  folderName="employees"
+                  initialPreviewUrl={avatarUrl}
+                  onUploadSuccess={(url) => setAvatarUrl(url)}
+                  className="w-32 h-32 rounded-full mx-auto"
+                />
+              </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Họ và tên khai sinh</label>
                 <input name="name" type="text" required defaultValue={selectedEmployee?.name} className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" placeholder="VD: Vũ Như Đại" />

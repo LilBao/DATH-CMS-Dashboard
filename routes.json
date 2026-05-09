@@ -17,5 +17,12 @@
   "/api/v1/orders": "/orders",
   "/api/v1/employees": "/employees",
   "/api/v1/employees/:id": "/employees/:id",
-  "/api/v1/employees/branch/:branchId": "/employees?branchId=:branchId"
+  "/api/v1/employees/branch/:branchId": "/employees?branchId=:branchId",
+  "/api/v1/products": "/products",
+  "/api/v1/products/:id": "/products/:id",
+  "/api/v1/coupons": "/coupons",
+  "/api/v1/coupons/:id": "/coupons/:id",
+  "/api/v1/reports/revenue/daily": "/daily_revenue",
+  "/api/v1/reports/revenue/movie": "/movie_revenue",
+  "/api/v1/reports/occupancy": "/occupancy_rates"
 }

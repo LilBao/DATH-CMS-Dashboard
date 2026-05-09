@@ -855,5 +855,26 @@
       "branchId": "BR-002"
     }
   ],
+  "daily_revenue": [
+    { "id": 1, "date": "2024-05-01", "revenue": 1250, "orders": 42 },
+    { "id": 2, "date": "2024-05-02", "revenue": 1800, "orders": 55 },
+    { "id": 3, "date": "2024-05-03", "revenue": 1400, "orders": 48 },
+    { "id": 4, "date": "2024-05-04", "revenue": 2100, "orders": 70 },
+    { "id": 5, "date": "2024-05-05", "revenue": 1600, "orders": 50 },
+    { "id": 6, "date": "2024-05-06", "revenue": 1900, "orders": 62 },
+    { "id": 7, "date": "2024-05-07", "revenue": 2300, "orders": 75 }
+  ],
+  "movie_revenue": [
+    { "id": 1, "movieTitle": "Dune: Part Two", "revenue": 8500, "ticketsSold": 560 },
+    { "id": 2, "movieTitle": "Kung Fu Panda 4", "revenue": 4200, "ticketsSold": 380 },
+    { "id": 3, "movieTitle": "Godzilla x Kong", "revenue": 6700, "ticketsSold": 440 },
+    { "id": 4, "movieTitle": "The Fall Guy", "revenue": 3100, "ticketsSold": 220 }
+  ],
+  "occupancy_rates": [
+    { "id": 1, "roomName": "Hall 04", "branchName": "Grand Plaza", "occupancyRate": 78 },
+    { "id": 2, "roomName": "VIP Suite 1", "branchName": "Grand Plaza", "occupancyRate": 92 },
+    { "id": 3, "roomName": "Hall 01", "branchName": "Starlight Cinema", "occupancyRate": 65 },
+    { "id": 4, "roomName": "Hall 02", "branchName": "Starlight Cinema", "occupancyRate": 45 }
+  ],
   "$schema": "./node_modules/json-server/schema.json"
 }

@@ -1,51 +1,49 @@
+import api from './api';
+
 export interface UploadResponse {
-  success: boolean;
-  message?: string;
-  url: string;
+  code: number;
+  message: string;
+  data: string; // The URL of the uploaded file
 }
 
 export const fileService = {
-  uploadFile: async (file: File): Promise<string> => {
+  /**
+   * Upload an image, banner, or poster to a specific folder
+   * @param file The file object to upload
+   * @param folderName The destination folder on Cloudinary
+   * @returns URL of the uploaded image
+   */
+  uploadFile: async (file: File, folderName: string): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
+    const response = await api.post<UploadResponse>(`/v1/files/upload`, formData, {
+      params: { folderName },
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
 
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.success) {
-      return result.url;
-    } else {
-      throw new Error(result.message || "Upload failed");
-    }
+    return response.data.data;
   },
 
-  uploadVideo: async (file: File): Promise<string> => {
+  /**
+   * Upload a video to a specific folder
+   * @param file The video file to upload
+   * @param folderName The destination folder on Cloudinary
+   * @returns URL of the uploaded video
+   */
+  uploadVideo: async (file: File, folderName: string): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch('/api/upload-video', {
-      method: 'POST',
-      body: formData,
+    const response = await api.post<UploadResponse>(`/v1/files/upload-video`, formData, {
+      params: { folderName },
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
 
-    if (!response.ok) {
-      throw new Error(`Video upload failed: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.success) {
-      return result.url;
-    } else {
-      throw new Error(result.message || "Video upload failed");
-    }
+    return response.data.data;
   },
 };

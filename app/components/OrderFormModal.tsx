@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { X, Save, Loader2, User, Mail, Ticket, DollarSign } from 'lucide-react';
+import { X, Save, Loader2, User, Mail, Ticket, DollarSign, Popcorn, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { orderService, Order } from '@/services/orderService';
 
@@ -35,10 +35,13 @@ export default function OrderFormModal({ isOpen, onClose, onSuccess, initialData
       } else {
         await orderService.create({
           ...payload,
-          status: 'Pending',
-          time: new Date().toLocaleTimeString() + ' - Today'
+          status: 'Completed', // POS orders are usually completed immediately
+          time: new Date().toLocaleString()
         });
-        toast.success("Đã tạo hóa đơn mới.");
+        toast.success("Đã tạo hóa đơn POS thành công.");
+        if (window.confirm("Bạn có muốn in hóa đơn ngay bây giờ?")) {
+          handlePrintInvoice();
+        }
       }
       onSuccess();
       onClose();
@@ -47,6 +50,13 @@ export default function OrderFormModal({ isOpen, onClose, onSuccess, initialData
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handlePrintInvoice = () => {
+    toast.success("Đang kết nối máy in và chuẩn bị hóa đơn...");
+    setTimeout(() => {
+      window.print();
+    }, 1000);
   };
 
   if (!isOpen) return null;
@@ -76,10 +86,24 @@ export default function OrderFormModal({ isOpen, onClose, onSuccess, initialData
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Thanh toán</label>
             <select name="paymentMethod" defaultValue={initialData?.paymentMethod || "Cash"} className="w-full px-5 py-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm">
-              <option value="Cash">Cash</option>
+              <option value="Cash">Cash (Tại quầy)</option>
               <option value="Credit Card">Credit Card</option>
               <option value="E-Wallet">E-Wallet</option>
             </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Bắp nước & Phụ kiện</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-2 bg-gray-50 p-3 rounded-xl">
+                <input type="checkbox" id="popcorn" className="w-4 h-4 text-indigo-600" />
+                <label htmlFor="popcorn" className="text-xs font-bold text-gray-600">Combo Bắp + Nước</label>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 p-3 rounded-xl">
+                <input type="checkbox" id="snack" className="w-4 h-4 text-indigo-600" />
+                <label htmlFor="snack" className="text-xs font-bold text-gray-600">Snack / Kẹo</label>
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-4 pt-6">
