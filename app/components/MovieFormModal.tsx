@@ -1,438 +1,413 @@
-import { useState, useRef, useEffect } from 'react';
-import { ImagePlus, Subtitles, MicVocal, X, Calendar } from 'lucide-react';
-import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "./ui/movie_dialog";
+"use client";
+
+import { useEffect, useState } from "react";
+import { MovieResponse, MovieRequest } from "@/services/movieService";
+import { fileService } from "@/services/fileService";
+import { catalogService, Genre, Actor, Format } from "@/services/catalogService";
+import { X, Upload, Loader2, Film, Clock, Calendar, Plus, Trash2, Layers } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/movie_dialog";
+import { toast } from "sonner";
+import FileUpload from "./FileUpload";
 
 interface MovieFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (movieData: any) => void;
-  existingMovies: any[];
-  initialData?: any | null;
+  onSave: (data: any) => Promise<void>;
+  initialData: MovieResponse | null;
+  existingMovies: MovieResponse[];
 }
 
-export default function MovieFormModal({ isOpen, onClose, onSave, existingMovies, initialData }: MovieFormModalProps) {
-  const [title, setTitle] = useState('');
-  const [duration, setDuration] = useState('');
-  const [cast, setCast] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(['Action']);
-  const [selectedFormat, setSelectedFormat] = useState('Standard');
-  const [hasSubtitles, setHasSubtitles] = useState(true);
-  const [hasDubbing, setHasDubbing] = useState(false);
-  const [releaseDate, setReleaseDate] = useState('');
-  const [closingDate, setClosingDate] = useState('');
-
-  const [posterPreview, setPosterPreview] = useState<string | null>(null);
-  const [posterError, setPosterError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const today = new Date().toISOString().split('T')[0];
-  const currentYear = new Date().getFullYear();
-  const maxAllowedDate = `${currentYear + 2}-12-31`;
-
-  const genres = ['Action', 'Sci-Fi', 'Drama', 'Comedy', '+ More'];
-  const formats = ['Standard', 'IMAX', '4DX'];
+export default function MovieFormModal({ isOpen, onClose, onSave, initialData }: MovieFormModalProps) {
+  const [formData, setFormData] = useState<any>({
+    title: "",
+    duration: 0,
+    genreIds: [] as string[],
+    formatIds: [] as string[],
+    posterUrl: "",
+    trailerUrl: "",
+    releaseDate: "",
+    closingDate: "",
+    ageRating: "T13",
+    description: "",
+    actorIds: [] as string[],
+    isDub: false,
+    isSub: true,
+  });
+  const [allGenres, setAllGenres] = useState<Genre[]>([]);
+  const [allActors, setAllActors] = useState<Actor[]>([]);
+  const [allFormats, setAllFormats] = useState<Format[]>([]);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (isOpen && initialData) {
-      setTitle(initialData.title || '');
-      setDuration(initialData.duration ? String(initialData.duration) : '');
-      setCast(initialData.cast || '');
-      setDescription(initialData.description || '');
-      setSelectedGenres(initialData.genre ? initialData.genre.split(', ') : ['Action']);
-      setPosterPreview(initialData.posterUrl || null);
-      setReleaseDate('');
-      setClosingDate('');
-      setPosterError('');
-    } else if (isOpen && !initialData) {
-      resetForm();
-    }
-  }, [isOpen, initialData]);
-
-  const toggleGenre = (genre: string) => {
-    if (genre === '+ More') return;
-    if (selectedGenres.includes(genre)) {
-      setSelectedGenres(selectedGenres.filter(g => g !== genre));
-    } else {
-      setSelectedGenres([...selectedGenres, genre]);
-    }
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    setPosterError('');
-
-    if (!file) return;
-
-    const validTypes = ['image/jpeg', 'image/png', 'image/svg+xml'];
-    if (!validTypes.includes(file.type)) {
-      setPosterError('Invalid format. Please upload JPG, PNG, or SVG.');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    const maxSize = 3 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setPosterError('File is too large. Maximum size is 3MB.');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    setPosterPreview(previewUrl);
-  };
-
-  const removePoster = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setPosterPreview(null);
-    setPosterError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const resetForm = () => {
-    setTitle('');
-    setDescription('');
-    setCast('');
-    setDuration('');
-    setSelectedGenres(['Action']);
-    setSelectedFormat('Standard');
-    setReleaseDate('');
-    setClosingDate('');
-    setPosterPreview(null);
-    setPosterError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
-
-  const handleSaveClick = () => {
-    if (!title.trim()) {
-      toast.error('Movie Title is required!');
-      return;
-    }
-    if (!description.trim()) {
-      toast.error('Description is required!');
-      return;
-    }
-    if (!cast.trim()) {
-      toast.error('Cast information is required!');
-      return;
-    }
-    if (!duration || Number(duration) <= 0) {
-      toast.error('Please enter a valid runtime!');
-      return;
-    }
-    if (!posterPreview) {
-      toast.error('Please upload a movie poster!');
-      return;
-    }
-    if (!releaseDate) {
-      toast.error('Release Date is required!');
-      return;
-    }
-    if (!closingDate) {
-      toast.error('Closing Date is required!');
-      return;
-    }
-
-    const isDuplicateTitle = existingMovies.some(
-      movie => movie.title.toLowerCase() === title.trim().toLowerCase() && movie.id !== initialData?.id
-    );
-    if (isDuplicateTitle) {
-      toast.error('A movie with this title already exists in the catalog!');
-      return;
-    }
-
-    const isDuplicateDesc = existingMovies.some(
-      movie => movie.description && movie.description.toLowerCase() === description.trim().toLowerCase() && movie.id !== initialData?.id
-    );
-    if (isDuplicateDesc) {
-      toast.error('Another movie already uses this exact description!');
-      return;
-    }
-
-    const movieDataToSave = {
-      id: initialData ? initialData.id : 'm' + Date.now(),
-      title: title.trim(),
-      description: description.trim(),
-      cast: cast.trim(),
-      duration: Number(duration),
-      genre: selectedGenres.join(', '),
-      status: (releaseDate > today) ? "Coming Soon" : "Now Showing",
-      posterUrl: posterPreview
+    const fetchCatalog = async () => {
+      try {
+        setIsLoadingCatalog(true);
+        const [genres, actors, formats] = await Promise.all([
+          catalogService.getAllGenres(),
+          catalogService.getAllActors(),
+          catalogService.getAllFormats()
+        ]);
+        setAllGenres(genres);
+        setAllActors(actors);
+        setAllFormats(formats);
+      } catch (e) {
+        console.error("Failed to fetch catalog");
+      } finally {
+        setIsLoadingCatalog(false);
+      }
     };
+    if (isOpen) fetchCatalog();
 
-    onSave(movieDataToSave);
-    handleClose();
+    if (initialData) {
+      setFormData({
+        title: initialData.mName,
+        duration: initialData.runTime,
+        genreIds: initialData.genres || [],
+        formatIds: initialData.formats || [],
+        posterUrl: initialData.posterUrl || "",
+        trailerUrl: initialData.trailerUrl || "",
+        releaseDate: initialData.releaseDate || "",
+        closingDate: initialData.closingDate || "",
+        ageRating: initialData.ageRating || "T13",
+        description: initialData.descript || "",
+        actorIds: initialData.actors || [],
+        isDub: initialData.isDub || false,
+        isSub: initialData.isSub || false,
+      });
+    } else {
+      setFormData({
+        title: "",
+        duration: 0,
+        genreIds: [],
+        formatIds: [],
+        posterUrl: "",
+        trailerUrl: "",
+        releaseDate: "",
+        closingDate: "",
+        ageRating: "T13",
+        description: "",
+        actorIds: [],
+        isDub: false,
+        isSub: true,
+      });
+    }
+  }, [initialData, isOpen]);
+
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const requestData: MovieRequest = {
+        mName: formData.title,
+        descript: formData.description,
+        runTime: formData.duration,
+        isDub: formData.isDub,
+        isSub: formData.isSub,
+        releaseDate: formData.releaseDate || new Date().toISOString().split("T")[0],
+        closingDate: formData.closingDate || new Date().toISOString().split("T")[0],
+        ageRating: formData.ageRating,
+        posterUrl: formData.posterUrl,
+        trailerUrl: formData.trailerUrl,
+        genreIds: formData.genreIds,
+        formatIds: formData.formatIds,
+        actorIds: formData.actorIds,
+      };
+      await onSave(requestData);
+      onClose();
+    } catch (error) {
+      toast.error("Lỗi khi lưu thông tin.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open: any) => !open && handleClose()}>
-      <DialogContent className="bg-white sm:max-w-3xl p-0 gap-0 overflow-hidden h-[90vh] flex flex-col rounded-2xl">
-        <DialogHeader className="px-8 py-5 border-b border-gray-100 bg-white shrink-0 z-10">
-          <DialogTitle className="text-2xl font-extrabold text-[#2d3337]">
-            {initialData ? 'Edit Movie' : 'Add New Movie'}
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl overflow-y-auto max-h-[90vh] custom-scrollbar">
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-black uppercase tracking-tight flex items-center gap-2">
+            <Film className="w-6 h-6 text-indigo-600" />
+            {initialData ? "Cập nhật phim" : "Thêm phim mới"}
           </DialogTitle>
-          <DialogDescription className="text-[14px] text-gray-500 mt-1">
-            Configure movie details and scheduling
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
-          <section className="space-y-4">
-            <h3 className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-4">Basic Information</h3>
+        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-8 mt-6">
+          {/* Cột trái: Upload Poster */}
+          <div className="space-y-4">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Poster phim</label>
+            <FileUpload
+              folderName="movies"
+              initialPreviewUrl={formData.posterUrl}
+              onUploadSuccess={(url) => setFormData((prev: any) => ({ ...prev, posterUrl: url }))}
+              className="aspect-[2/3] rounded-3xl"
+              aspect="none"
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">Movie Title</label>
+          {/* Cột phải: Thông tin phim */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tên phim</label>
               <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-                placeholder="Enter movie name"
+                required
+                value={formData.title}
+                onChange={e => setFormData({ ...formData, title: e.target.value })}
+                className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">Description</label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all resize-none"
-                placeholder="Brief synopsis of the movie..."
-              ></textarea>
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">Cast (Actors)</label>
-              <input
-                type="text"
-                value={cast}
-                onChange={(e) => setCast(e.target.value)}
-                className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-                placeholder="e.g. Timothée Chalamet, Zendaya..."
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Runtime (min)</label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Thời lượng (phút)
+                </label>
                 <input
                   type="number"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-                  placeholder="120"
+                  value={formData.duration}
+                  onChange={e => setFormData({ ...formData, duration: Number(e.target.value) })}
+                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Age Rating</label>
-                <select className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all appearance-none cursor-pointer">
-                  <option>P (General)</option>
-                  <option>C13 (13+)</option>
-                  <option>C16 (16+)</option>
-                  <option>C18 (18+)</option>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Phân loại tuổi</label>
+                <select
+                  value={formData.ageRating}
+                  onChange={e => setFormData({ ...formData, ageRating: e.target.value })}
+                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="K">K (Mọi lứa tuổi)</option>
+                  <option value="T13">T13 (Trên 13 tuổi)</option>
+                  <option value="T16">T16 (Trên 16 tuổi)</option>
+                  <option value="T18">T18 (Trên 18 tuổi)</option>
                 </select>
               </div>
             </div>
-          </section>
 
-          <section className="space-y-4">
-            <h3 className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-4">Media</h3>
-
-            <div className="flex gap-6">
-              <div className="flex flex-col gap-2">
-                <label
-                  className={`relative w-[160px] shrink-0 aspect-[2/3] border-2 ${posterError ? 'border-red-400 bg-red-50' : 'border-dashed border-gray-300 bg-[#f4f6f8] hover:bg-blue-50 hover:border-blue-400'} rounded-2xl flex flex-col items-center justify-center transition-colors cursor-pointer text-gray-500 group overflow-hidden`}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span className="text-[10px] font-black text-gray-500 uppercase">Lồng tiếng</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, isDub: !formData.isDub })}
+                  className={`w-10 h-5 rounded-full relative transition-all ${formData.isDub ? 'bg-indigo-600' : 'bg-gray-300'}`}
                 >
-                  <input
-                    type="file"
-                    accept="image/png, image/jpeg, image/svg+xml"
-                    className="hidden"
-                    onChange={handleImageUpload}
-                    ref={fileInputRef}
-                  />
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${formData.isDub ? 'right-1' : 'left-1'}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span className="text-[10px] font-black text-gray-500 uppercase">Phụ đề</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, isSub: !formData.isSub })}
+                  className={`w-10 h-5 rounded-full relative transition-all ${formData.isSub ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${formData.isSub ? 'right-1' : 'left-1'}`} />
+                </button>
+              </div>
+            </div>
 
-                  {posterPreview ? (
-                    <>
-                      <img src={posterPreview} alt="Preview" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-                        <p className="text-white text-sm font-bold">Change Image</p>
-                      </div>
-                      <button
-                        onClick={removePoster}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-sm"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <ImagePlus className={`w-8 h-8 mb-2 ${posterError ? 'text-red-400' : 'text-gray-400 group-hover:text-blue-500'} transition-colors`} />
-                      <p className={`text-sm font-bold ${posterError ? 'text-red-500' : 'text-gray-600 group-hover:text-blue-600'}`}>Upload Poster</p>
-                    </>
-                  )}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                <Layers className="w-3 h-3" /> Định dạng phim
+              </label>
+              <CatalogSelector
+                items={allFormats.map(f => f.fName)}
+                selectedItems={formData.formatIds}
+                onSelect={(id: any) => setFormData({ ...formData, formatIds: [...formData.formatIds, id] })}
+                onRemove={(id: any) => setFormData({ ...formData, formatIds: formData.formatIds.filter((fid: string) => fid !== id) })}
+                onCreate={async (val: any) => {
+                  const newFormat = await catalogService.createFormat(val);
+                  setAllFormats([...allFormats, newFormat]);
+                  setFormData({ ...formData, formatIds: [...formData.formatIds, newFormat.fName] });
+                }}
+                onDelete={async (val: any) => {
+                  await catalogService.deleteFormat(val);
+                  setAllFormats(allFormats.filter(f => f.fName !== val));
+                  setFormData({ ...formData, formatIds: formData.formatIds.filter((fid: string) => fid !== val) });
+                }}
+                placeholder="2D, 3D, IMAX..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Thể loại</label>
+              <CatalogSelector
+                items={allGenres.map(g => g.genre)}
+                selectedItems={formData.genreIds}
+                onSelect={(id: any) => setFormData({ ...formData, genreIds: [...formData.genreIds, id] })}
+                onRemove={(id: any) => setFormData({ ...formData, genreIds: formData.genreIds.filter((gid: string) => gid !== id) })}
+                onCreate={async (val: any) => {
+                  const newGenre = await catalogService.createGenre(val);
+                  setAllGenres([...allGenres, newGenre]);
+                  setFormData({ ...formData, genreIds: [...formData.genreIds, newGenre.genre] });
+                }}
+                onDelete={async (val: any) => {
+                  await catalogService.deleteGenre(val);
+                  setAllGenres(allGenres.filter(g => g.genre !== val));
+                  setFormData({ ...formData, genreIds: formData.genreIds.filter((gid: string) => gid !== val) });
+                }}
+                placeholder="Chọn hoặc thêm thể loại..."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Ngày khởi chiếu
                 </label>
-                {posterError && <p className="text-xs text-red-500 font-medium w-[160px] text-center leading-tight">{posterError}</p>}
+                <input
+                  type="date"
+                  value={formData.releaseDate}
+                  onChange={e => setFormData({ ...formData, releaseDate: e.target.value })}
+                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none"
+                />
               </div>
-
-              <div className="flex-1 bg-[#f4f6f8] rounded-2xl p-6 flex flex-col justify-center">
-                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-3">Requirements</h4>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center gap-2 before:content-[''] before:w-1.5 before:h-1.5 before:bg-blue-600 before:rounded-full">Aspect ratio: 2:3</li>
-                  <li className="flex items-center gap-2 before:content-[''] before:w-1.5 before:h-1.5 before:bg-blue-600 before:rounded-full">Resolution: 800×1200 min</li>
-                  <li className="flex items-center gap-2 before:content-[''] before:w-1.5 before:h-1.5 before:bg-blue-600 before:rounded-full">Max file size: 3MB</li>
-                  <li className="flex items-center gap-2 before:content-[''] before:w-1.5 before:h-1.5 before:bg-blue-600 before:rounded-full">Format: JPG, PNG, SVG</li>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-6">
-            <h3 className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-4">Classification & Details</h3>
-
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3">Genres</label>
-              <div className="flex flex-wrap gap-2">
-                {genres.map(genre => (
-                  <button
-                    key={genre}
-                    onClick={() => toggleGenre(genre)}
-                    className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${selectedGenres.includes(genre)
-                        ? 'bg-[#4338ca] text-white shadow-md'
-                        : 'bg-[#f4f6f8] text-gray-600 hover:bg-gray-200'
-                      }`}
-                  >
-                    {genre}
-                  </button>
-                ))}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Ngày kết thúc
+                </label>
+                <input
+                  type="date"
+                  value={formData.closingDate}
+                  onChange={e => setFormData({ ...formData, closingDate: e.target.value })}
+                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none"
+                />
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3">Formats</label>
-              <div className="flex gap-4">
-                {formats.map(format => (
-                  <button
-                    key={format}
-                    onClick={() => setSelectedFormat(format)}
-                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all border-2 ${selectedFormat === format
-                        ? 'border-blue-200 bg-blue-50 text-blue-700'
-                        : 'border-transparent bg-[#f4f6f8] text-gray-700 hover:bg-gray-200'
-                      }`}
-                  >
-                    {format}
-                  </button>
-                ))}
-              </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Trailer URL (Youtube)</label>
+              <input
+                type="url"
+                placeholder="https://youtube.com/watch?v=..."
+                value={formData.trailerUrl}
+                onChange={e => setFormData({ ...formData, trailerUrl: e.target.value })}
+                className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3">Language Options</label>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-4 bg-[#f4f6f8] rounded-xl cursor-pointer" onClick={() => setHasSubtitles(!hasSubtitles)}>
-                  <div className="flex items-center gap-3">
-                    <Subtitles className="w-5 h-5 text-gray-600" />
-                    <span className="font-bold text-gray-800">Subtitles available</span>
-                  </div>
-                  <div className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out flex ${hasSubtitles ? 'bg-[#4338ca] justify-end' : 'bg-gray-300 justify-start'}`}>
-                    <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-[#f4f6f8] rounded-xl cursor-pointer" onClick={() => setHasDubbing(!hasDubbing)}>
-                  <div className="flex items-center gap-3">
-                    <MicVocal className="w-5 h-5 text-gray-600" />
-                    <span className="font-bold text-gray-800">Dubbing available</span>
-                  </div>
-                  <div className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out flex ${hasDubbing ? 'bg-[#4338ca] justify-end' : 'bg-gray-300 justify-start'}`}>
-                    <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
-                  </div>
-                </div>
-              </div>
+          {/* Hàng dưới: Diễn viên & Mô tả */}
+          <div className="col-span-2 space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Dàn diễn viên</label>
+              <CatalogSelector
+                items={allActors.map(a => a.fullName)}
+                selectedItems={formData.actorIds}
+                onSelect={(id: any) => setFormData({ ...formData, actorIds: [...formData.actorIds, id] })}
+                onRemove={(id: any) => setFormData({ ...formData, actorIds: formData.actorIds.filter((aid: string) => aid !== id) })}
+                onCreate={async (val: any) => {
+                  const newActor = await catalogService.createActor(val);
+                  setAllActors([...allActors, newActor]);
+                  setFormData({ ...formData, actorIds: [...formData.actorIds, newActor.fullName] });
+                }}
+                onDelete={async (val: any) => {
+                  await catalogService.deleteActor(val);
+                  setAllActors(allActors.filter(a => a.fullName !== val));
+                  setFormData({ ...formData, actorIds: formData.actorIds.filter((aid: string) => aid !== val) });
+                }}
+                placeholder="Chọn hoặc thêm diễn viên..."
+              />
             </div>
-          </section>
-
-          <section className="space-y-4">
-            <h3 className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-4">Screening Schedule</h3>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="relative">
-                <label className="block text-sm font-bold text-gray-700 mb-2">Release Date</label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    min={today}
-                    max={maxAllowedDate}
-                    value={releaseDate}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val > maxAllowedDate) {
-                        setReleaseDate(maxAllowedDate);
-                      } else {
-                        setReleaseDate(val);
-                      }
-                      if (closingDate && val > closingDate) {
-                        setClosingDate('');
-                      }
-                    }}
-                    className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer"
-                  />
-                </div>
-              </div>
-              <div className="relative">
-                <label className="block text-sm font-bold text-gray-700 mb-2">Closing Date</label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    min={releaseDate || today}
-                    max={maxAllowedDate}
-                    value={closingDate}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val > maxAllowedDate) {
-                        setClosingDate(maxAllowedDate);
-                      } else {
-                        setClosingDate(val);
-                      }
-                    }}
-                    disabled={!releaseDate}
-                    className="w-full px-4 py-3 bg-[#f4f6f8] text-gray-900 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                </div>
-              </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Mô tả phim</label>
+              <textarea
+                rows={3}
+                value={formData.description}
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-medium text-gray-600 outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
             </div>
-          </section>
-        </div>
+          </div>
 
-        <DialogFooter className="px-8 py-5 border-t border-gray-100 bg-white shrink-0 grid grid-cols-2 gap-4">
-          <button
-            onClick={handleClose}
-            className="w-full py-4 rounded-xl font-bold text-gray-800 bg-white border-2 border-gray-200 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSaveClick}
-            className="w-full py-4 rounded-xl font-bold bg-[#4338ca] text-white hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg"
-          >
-            Save Movie
-          </button>
-        </DialogFooter>
+          <div className="col-span-2 flex gap-4 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs"
+            >
+              Hủy bỏ
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {initialData ? "Cập nhật phim" : "Thêm vào Catalog"}
+            </button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CatalogSelector({ items, selectedItems, onSelect, onRemove, onCreate, onDelete, placeholder }: any) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filtered = items.filter((item: string) =>
+    item.toLowerCase().includes(query.toLowerCase()) && !selectedItems.includes(item)
+  );
+
+  return (
+    <div className="relative">
+      <div className="flex flex-wrap gap-2 mb-2">
+        {selectedItems.map((item: string) => (
+          <span key={item} className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[11px] font-black flex items-center gap-1 border border-indigo-100">
+            {item}
+            <X className="w-3 h-3 cursor-pointer" onClick={() => onRemove(item)} />
+          </span>
+        ))}
+      </div>
+      <div className="relative">
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        {isOpen && (query || filtered.length > 0) && (
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 z-[100] max-h-60 overflow-y-auto custom-scrollbar">
+            {filtered.map((item: string) => (
+              <div
+                key={item}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center group transition-colors"
+                onClick={() => { onSelect(item); setQuery(""); setIsOpen(false); }}
+              >
+                <span className="text-sm font-bold text-gray-600">{item}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDelete(item); }}
+                  className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-rose-50 rounded-lg text-rose-500 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+            {query && !items.includes(query) && (
+              <div
+                className="px-4 py-3 hover:bg-indigo-50 cursor-pointer flex items-center gap-2 text-indigo-600 transition-colors"
+                onClick={() => { onCreate(query); setQuery(""); setIsOpen(false); }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-sm font-black italic">Thêm mới: "{query}"</span>
+              </div>
+            )}
+            {filtered.length === 0 && !query && (
+              <div className="px-4 py-8 text-center text-gray-300 font-bold uppercase text-[10px] tracking-widest">
+                Không còn lựa chọn nào
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {isOpen && <div className="fixed inset-0 z-[90]" onClick={() => setIsOpen(false)} />}
+    </div>
   );
 }

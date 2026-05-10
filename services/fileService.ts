@@ -1,9 +1,13 @@
 import api from './api';
 
 export interface UploadResponse {
-  code: number;
-  message: string;
-  data: string; // The URL of the uploaded file
+  signature: string;
+  format: string;
+  resource_type: string;
+  secure_url: string;
+  url: string;
+  public_id: string;
+  [key: string]: any;
 }
 
 export const fileService = {
@@ -17,14 +21,19 @@ export const fileService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await api.post<UploadResponse>(`/v1/files/upload`, formData, {
+    // Lưu ý: api interceptor đã unwrap data, nên kết quả trả về là mảng các UploadResponse
+    const response = await api.post<any>(`/files/upload`, formData, {
       params: { folderName },
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
 
-    return response.data.data;
+    const data = response.data;
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0].secure_url || data[0].url;
+    }
+    return typeof data === 'string' ? data : '';
   },
 
   /**
@@ -37,13 +46,17 @@ export const fileService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await api.post<UploadResponse>(`/v1/files/upload-video`, formData, {
+    const response = await api.post<any>(`/files/upload-video`, formData, {
       params: { folderName },
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
 
-    return response.data.data;
+    const data = response.data;
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0].secure_url || data[0].url;
+    }
+    return typeof data === 'string' ? data : '';
   },
 };

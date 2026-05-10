@@ -11,6 +11,7 @@ interface FileUploadProps {
   onUploadSuccess: (url: string) => void;
   onUploadError?: (error: any) => void;
   className?: string;
+  aspect?: string; // e.g. 'square', 'video', 'none'
 }
 
 export default function FileUpload({
@@ -21,6 +22,7 @@ export default function FileUpload({
   onUploadSuccess,
   onUploadError,
   className = '',
+  aspect = 'video',
 }: FileUploadProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -135,11 +137,11 @@ export default function FileUpload({
   };
 
   return (
-    <div className={`w-full ${className}`}>
+    <div className={`${className}`}>
       <div 
-        className={`relative w-full rounded-2xl border-2 transition-all duration-300 ease-in-out cursor-pointer group overflow-hidden
+        className={`relative w-full h-full rounded-2xl border-2 transition-all duration-300 ease-in-out cursor-pointer group overflow-hidden
           ${isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-dashed border-gray-300 bg-[#f4f6f8] hover:bg-blue-50/50 hover:border-blue-400'}
-          ${previewUrl && type === 'image' ? 'aspect-[16/9]' : 'py-10'}
+          ${previewUrl && type === 'image' ? (aspect === 'square' ? 'aspect-square' : aspect === 'video' ? 'aspect-[16/9]' : '') : 'py-10'}
         `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

@@ -1,185 +1,383 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
-  Download, TrendingUp, TrendingDown, Popcorn, 
-  MessageSquare, ChevronRight, CalendarDays,
-  DollarSign, Ticket, Users, Activity
+  Download, Popcorn, MessageSquare, 
+  DollarSign, Ticket, Users, Activity, Loader2,
+  TrendingUp, ArrowUpRight, ArrowDownRight,
+  Calendar, Filter
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportService, DailyRevenueResponse, MovieRevenueResponse, OccupancyResponse } from '@/services/reportService';
+import { branchService, BranchResponse } from '@/services/branchService';
+import { useAuthStore } from '@/stores/authStore';
+import { useSystemStore } from '@/stores/systemStore';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
+  PieChart,
+  Pie,
+  Legend
+} from 'recharts';
+import { format } from 'date-fns';
 
 type TimeRange = '30days' | 'quarterly' | 'custom';
 
-const ORDERS_API = 'http://localhost:3001/orders';
-const MOVIES_API = 'http://localhost:3001/movies';
-
 export default function ReportsAnalyticsPage() {
+  const formatCurrency = useSystemStore(state => state.formatCurrency);
   const [timeRange, setTimeRange] = useState<TimeRange>('30days');
-  const [customDate, setCustomDate] = useState({ start: '', end: '' });
-  const [stats, setStats] = useState([
-    { title: 'Total Revenue', value: '$0.00', trend: '+0.0%', isPositive: true },
-    { title: 'Tickets Sold', value: '0', trend: '+0.0%', isPositive: true },
-    { title: 'Avg. Attendance', value: '0%', trend: '+0.0%', isPositive: true },
-    { title: 'Concessions', value: '$0.00', trend: '+0.0%', isPositive: true }
-  ]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<{
+    daily: DailyRevenueResponse[];
+    movie: MovieRevenueResponse[];
+    occupancy: OccupancyResponse[];
+  }>({
+    daily: [],
+    movie: [],
+    occupancy: []
+  });
+
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
+
+  const { user } = useAuthStore();
+  const isManager = user?.role === 'MANAGER';
+  const activeBranchId = isManager 
+    ? user?.branchId 
+    : (selectedBranchId !== 'all' ? Number(selectedBranchId) : undefined);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchBranches = async () => {
       try {
-        const [ordersRes, moviesRes] = await Promise.all([
-          fetch(ORDERS_API),
-          fetch(MOVIES_API)
-        ]);
-        const orders = await ordersRes.json();
-        const movies = await moviesRes.json();
-
-        const totalRev = orders.reduce((acc: number, curr: any) => acc + curr.total, 0);
-        const totalTickets = orders.length * 2;
-
-        setStats([
-          { title: 'Total Revenue', value: `$${totalRev.toLocaleString()}`, trend: '+12.5%', isPositive: true },
-          { title: 'Tickets Sold', value: totalTickets.toString(), trend: '+8.2%', isPositive: true },
-          { title: 'Avg. Attendance', value: '64%', trend: '-2.4%', isPositive: false },
-          { title: 'Concessions', value: '$45,820', trend: '+15.1%', isPositive: true }
-        ]);
-      } catch (error) {
-        console.error("Error loading analytics:", error);
+        const bData = await branchService.getAll();
+        setBranches(Array.isArray(bData) ? bData : []);
+      } catch (err) {
+        console.error("Failed to load branches", err);
       }
     };
-    fetchData();
-  }, [timeRange]);
+    if (!isManager) {
+      fetchBranches();
+    }
+  }, [isManager]);
+
+  const loadAnalyticsData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Fetch data based on role
+      const [dailyRev, movieRev, occupancy] = await Promise.all([
+        reportService.getDailyRevenue(undefined, undefined, activeBranchId),
+        reportService.getMovieRevenue(undefined, undefined, activeBranchId),
+        reportService.getOccupancyRate(activeBranchId?.toString())
+      ]);
+      
+      setData({
+        daily: Array.isArray(dailyRev) ? dailyRev : [],
+        movie: Array.isArray(movieRev) ? movieRev : [],
+        occupancy: Array.isArray(occupancy) ? occupancy : []
+      });
+    } catch (error) {
+      console.error("Error loading analytics:", error);
+      toast.error("Không thể nạp dữ liệu báo cáo từ máy chủ.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [activeBranchId]);
+
+  const stats = useMemo(() => {
+    const totalRevenue = data.daily.reduce((sum, item) => sum + item.revenue, 0);
+    const totalTickets = data.daily.reduce((sum, item) => sum + item.ticketCount, 0);
+    const avgOccupancy = data.occupancy.length > 0 
+      ? data.occupancy.reduce((sum, item) => sum + item.occupancyRate, 0) / data.occupancy.length 
+      : 0;
+    const topMovie = data.movie.length > 0 
+      ? [...data.movie].sort((a, b) => b.revenue - a.revenue)[0].movieName 
+      : 'N/A';
+
+    return [
+      { 
+        title: 'Tổng doanh thu', 
+        value: formatCurrency(totalRevenue), 
+        trend: '+12.5%', 
+        isPositive: true, 
+        icon: <DollarSign className="w-5 h-5" />,
+        color: 'indigo'
+      },
+      { 
+        title: 'Vé đã bán', 
+        value: totalTickets.toLocaleString(), 
+        trend: '+8.2%', 
+        isPositive: true, 
+        icon: <Ticket className="w-5 h-5" />,
+        color: 'emerald'
+      },
+      { 
+        title: 'Tỷ lệ lấp đầy TB', 
+        value: `${avgOccupancy.toFixed(1)}%`, 
+        trend: '+4.1%', 
+        isPositive: true, 
+        icon: <Users className="w-5 h-5" />,
+        color: 'purple'
+      },
+      { 
+        title: 'Phim hot nhất', 
+        value: topMovie, 
+        trend: 'Thịnh hành', 
+        isPositive: true, 
+        icon: <TrendingUp className="w-5 h-5" />,
+        color: 'rose'
+      }
+    ];
+  }, [data]);
+
+  const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981'];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-4">
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
+        <p className="text-xs font-black text-gray-400 uppercase tracking-[3px]">Đang tổng hợp báo cáo...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto min-h-screen flex flex-col pb-12">
+    <div className="w-full max-w-[1600px] mx-auto min-h-screen flex flex-col pb-12 px-4 animate-in fade-in duration-700">
       
       {/* Header Section */}
-      <div className="flex items-end justify-between mb-8 shrink-0">
+      <div className="flex items-end justify-between mb-10 shrink-0">
         <div>
-          <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-[2.2px] mb-1 block">Performance Overview</span>
-          <h1 className="text-[36px] font-black text-[#2d3337] tracking-tight leading-tight">Reports & Analytics</h1>
+          <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-[2.2px] mb-1 block">Analytics Dashboard</span>
+          <h1 className="text-[44px] font-black text-[#2d3337] tracking-tighter leading-tight uppercase">
+            Báo cáo & Thống kê
+          </h1>
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-gray-500 font-medium">
+              {isManager ? `Dữ liệu tại chi nhánh của bạn` : 'Dữ liệu báo cáo hệ thống'}
+            </p>
+            {!isManager && (
+              <select 
+                value={selectedBranchId} 
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-1.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="all">Toàn bộ chi nhánh</option>
+                {branches.map(b => (
+                  <option key={b.branchId} value={b.branchId}>{b.bName}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="bg-gray-100 p-1 rounded-xl flex font-medium text-sm">
+          <div className="bg-white border border-gray-100 p-1.5 rounded-2xl flex font-bold text-[11px] shadow-sm">
             {['30days', 'quarterly', 'custom'].map((range) => (
               <button 
                 key={range}
                 onClick={() => setTimeRange(range as TimeRange)}
-                className={`px-4 py-2 rounded-lg transition-all capitalize ${timeRange === range ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-900'}`}
+                className={`px-5 py-2 rounded-xl transition-all uppercase tracking-tighter ${timeRange === range ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-gray-400 hover:text-gray-900'}`}
               >
-                {range === '30days' ? 'Last 30 Days' : range}
+                {range === '30days' ? '30 Ngày qua' : range === 'quarterly' ? 'Theo Quý' : 'Tùy chỉnh'}
               </button>
             ))}
           </div>
 
-          <button className="bg-[#4a4bd7] hover:bg-blue-700 shadow-lg shadow-indigo-100 flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all">
-            <Download className="w-4 h-4" /> Export CSV
+          <button className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 shadow-sm flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all">
+            <Download className="w-4 h-4" /> Xuất CSV
           </button>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         {stats.map((stat, idx) => (
-          <div key={idx} className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 flex flex-col justify-between h-[160px]">
+          <div key={idx} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between h-[180px] transition-all hover:shadow-md group">
             <div className="flex items-center justify-between w-full">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600">
-                {idx === 0 ? <DollarSign className="w-5 h-5" /> : idx === 1 ? <Ticket className="w-5 h-5" /> : idx === 2 ? <Users className="w-5 h-5" /> : <Popcorn className="w-5 h-5" />}
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-${stat.color}-50 text-${stat.color}-600 shadow-inner group-hover:scale-110 transition-transform`}>
+                {stat.icon}
               </div>
-              <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${stat.isPositive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+              <div className={`flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg ${stat.isPositive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                {stat.isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                 {stat.trend}
-              </span>
+              </div>
             </div>
             <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{stat.title}</p>
-              <span className="text-2xl font-black text-gray-800">{stat.value}</span>
+              <span className="text-2xl font-black text-gray-800 tracking-tighter truncate block">{stat.value}</span>
             </div>
           </div>
         ))}
       </div>
 
       {/* Main Charts Row */}
-      <div className="grid grid-cols-12 gap-6 mb-8">
-        <div className="col-span-8 bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 min-h-[400px] flex flex-col">
-          <div className="flex justify-between items-start mb-10">
+      <div className="grid grid-cols-12 gap-6 mb-10">
+        {/* Doanh thu hàng ngày */}
+        <div className="col-span-12 lg:col-span-8 bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex flex-col h-[450px]">
+          <div className="flex justify-between items-start mb-6">
             <div>
-              <h3 className="text-xl font-black text-gray-800">Peak Attendance Hours</h3>
-              <p className="text-sm text-gray-400 font-medium">Visitor distribution across all showtimes</p>
+              <h3 className="text-xl font-black text-gray-800 tracking-tight uppercase">Biểu đồ doanh thu</h3>
+              <p className="text-sm text-gray-400 font-medium">Thống kê doanh thu theo từng ngày</p>
             </div>
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                <span className="text-[10px] font-black text-gray-400 uppercase">Weekdays</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-purple-300" />
-                <span className="text-[10px] font-black text-gray-400 uppercase">Weekends</span>
-              </div>
+            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-100">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Dữ liệu thực tế</span>
             </div>
           </div>
           
-          <div className="flex-1 flex items-end justify-between px-4 pb-2 border-b border-gray-100 relative">
-             {/* Mock Chart Bars[cite: 3] */}
-             {[40, 60, 45, 90, 75, 30, 85, 50].map((h, i) => (
-               <div key={i} className="w-12 flex flex-col items-center gap-1 group">
-                 <div className="w-full bg-indigo-500/20 group-hover:bg-indigo-500 transition-all rounded-t-lg" style={{ height: `${h}%` }} />
-                 <div className="w-full bg-purple-300 group-hover:bg-purple-400 transition-all rounded-t-lg" style={{ height: `${h * 0.7}%` }} />
-               </div>
-             ))}
-          </div>
-          <div className="flex justify-between mt-4 px-4 text-[10px] font-black text-gray-400 uppercase tracking-tighter">
-            <span>10AM</span><span>12PM</span><span>2PM</span><span>4PM</span><span>6PM</span><span>8PM</span><span>10PM</span><span>12AM</span>
+          <div className="flex-1 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data.daily}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: '#9ca3af' }}
+                  tickFormatter={(str) => format(new Date(str), 'dd/MM')}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: '#9ca3af' }}
+                  tickFormatter={(val) => `${(val / 1000000).toFixed(1)}M`}
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
+                  labelStyle={{ fontWeight: 800, color: '#1f2937', marginBottom: '4px' }}
+                  formatter={(val: any) => [formatCurrency(Number(val)), 'Doanh thu']}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="revenue" 
+                  stroke="#6366f1" 
+                  strokeWidth={4}
+                  fillOpacity={1} 
+                  fill="url(#colorRevenue)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="col-span-4 bg-white p-8 rounded-[32px] shadow-sm border border-gray-100">
-          <h3 className="text-xl font-black text-gray-800 mb-8">Revenue by Branch</h3>
-          <div className="space-y-8">
-            {[
-              { name: 'Grand Plaza', val: '$52.4k', p: 85, color: 'bg-indigo-600' },
-              { name: 'Starlight Cinema', val: '$38.1k', p: 65, color: 'bg-purple-500' },
-              { name: 'Eastside Mall', val: '$29.8k', p: 50, color: 'bg-emerald-500' }
-            ].map((b, i) => (
-              <div key={i}>
-                <div className="flex justify-between text-sm font-black mb-2">
-                  <span className="text-gray-700">{b.name}</span>
-                  <span className="text-indigo-600">{b.val}</span>
-                </div>
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full ${b.color} rounded-full transition-all duration-1000`} style={{ width: `${b.p}%` }} />
-                </div>
-              </div>
-            ))}
+        {/* Top Phim theo doanh thu */}
+        <div className="col-span-12 lg:col-span-4 bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex flex-col h-[450px]">
+          <h3 className="text-xl font-black text-gray-800 mb-6 tracking-tight uppercase">Top phim doanh thu</h3>
+          <div className="flex-1 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={[...data.movie].sort((a, b) => b.revenue - a.revenue)} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="movieName" 
+                  type="category" 
+                  width={100}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 9, fontWeight: 800, fill: '#4b5563' }}
+                />
+                <Tooltip 
+                  cursor={{ fill: 'transparent' }}
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  formatter={(val: any) => [formatCurrency(Number(val)), 'Doanh thu']}
+                />
+                <Bar dataKey="revenue" radius={[0, 10, 10, 0]}>
+                  {data.movie.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Feature Cards[cite: 3] */}
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-indigo-600 p-8 rounded-[32px] text-white relative overflow-hidden group cursor-pointer shadow-xl shadow-indigo-100">
-          <div className="relative z-10">
-            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-              <Popcorn className="w-6 h-6" />
-            </div>
-            <h3 className="text-2xl font-black mb-2">Concessions Deep Dive</h3>
-            <p className="text-indigo-100 text-sm font-medium mb-6 max-w-sm">Popcorn and beverage sales increased by 15% this month due to "Movie Combo" promotion.</p>
-            <span className="text-xs font-black uppercase tracking-widest border-b-2 border-white/30 pb-1 group-hover:border-white transition-all">Analyze Menu Performance</span>
+      {/* Occupancy Detail Table */}
+      <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden mb-10">
+        <div className="p-8 border-b border-gray-50 flex justify-between items-center">
+          <div>
+            <h3 className="text-xl font-black text-gray-800 tracking-tight uppercase">Chi tiết tỷ lệ lấp đầy</h3>
+            <p className="text-sm text-gray-400 font-medium">Thống kê hiệu suất theo từng suất chiếu</p>
           </div>
-          <Activity className="absolute -right-4 -bottom-4 w-40 h-40 text-white/5 rotate-12" />
+          <button className="flex items-center gap-2 text-indigo-600 font-black text-[10px] uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-xl">
+            <Filter className="w-3 h-3" /> Lọc suất chiếu
+          </button>
         </div>
-
-        <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden group cursor-pointer">
-          <div className="relative z-10">
-            <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-6">
-              <MessageSquare className="w-6 h-6" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Phim / Suất chiếu</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Ngày</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Phòng</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Vé đã bán</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Tỷ lệ lấp đầy</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {data.occupancy.slice(0, 10).map((occ, idx) => (
+                <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-8 py-5">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-black text-gray-800 uppercase tracking-tighter">{occ.movieName}</span>
+                      <span className="text-[10px] font-bold text-indigo-500">{occ.startTime}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="text-xs font-bold text-gray-500">{format(new Date(occ.day), 'dd/MM/yyyy')}</span>
+                  </td>
+                  <td className="px-8 py-5 text-center">
+                    <span className="px-3 py-1 rounded-full bg-gray-100 text-[10px] font-black text-gray-600 uppercase">Room {occ.roomId}</span>
+                  </td>
+                  <td className="px-8 py-5 text-center">
+                    <div className="flex flex-col items-center">
+                      <span className="text-sm font-black text-gray-800">{occ.ticketsSold}</span>
+                      <span className="text-[9px] font-bold text-gray-400">/ {occ.capacity || 'N/A'} ghế</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${occ.occupancyRate > 70 ? 'bg-emerald-500' : occ.occupancyRate > 30 ? 'bg-indigo-500' : 'bg-amber-500'}`} 
+                          style={{ width: `${occ.occupancyRate}%` }} 
+                        />
+                      </div>
+                      <span className="text-xs font-black text-gray-700 w-10">{occ.occupancyRate.toFixed(1)}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.occupancy.length > 10 && (
+            <div className="p-4 text-center">
+              <button className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-indigo-600 transition-colors">
+                Xem thêm {data.occupancy.length - 10} suất chiếu khác
+              </button>
             </div>
-            <h3 className="text-2xl font-black text-gray-800 mb-2">Customer Feedback</h3>
-            <p className="text-gray-400 text-sm font-medium mb-6 max-w-sm">Average customer satisfaction is 4.8/5 based on 2,400 post-show surveys.</p>
-            <span className="text-xs font-black text-purple-600 uppercase tracking-widest border-b-2 border-purple-100 pb-1 group-hover:border-purple-600 transition-all">Read Reviews</span>
-          </div>
+          )}
         </div>
       </div>
 
     </div>
   );
-}
+}
