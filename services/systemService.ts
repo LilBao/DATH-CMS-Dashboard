@@ -5,16 +5,22 @@ export interface SystemSettings {
   orderExpirationMinutes: number;
   autoCancelEnabled: boolean;
   seatSyncInterval: number;
+  primaryColor: string;
+  currency: 'USD' | 'VND';
+  currencyFormat: string;
+  cinemaName: string;
+  cinemaAddress: string;
+  cinemaPhone: string;
 }
 
 export const systemService = {
-  getSettings: async () => {
-    const response = await api.get('/system/settings');
+  getSettings: async (): Promise<SystemSettings> => {
+    const response = await api.get<SystemSettings>('/system/settings');
     return response.data;
   },
 
-  updateSettings: async (settings: Partial<SystemSettings>) => {
-    const response = await api.patch('/system/settings', settings);
+  updateSettings: async (settings: Partial<SystemSettings>): Promise<SystemSettings> => {
+    const response = await api.put<SystemSettings>('/system/settings', settings);
     return response.data;
   },
 

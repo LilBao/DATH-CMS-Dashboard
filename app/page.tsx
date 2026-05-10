@@ -9,8 +9,21 @@ import imgMoviePoster2 from "./imports/4476fcf216e10f8cee92560cbcbef0e3d2962f33.
 import { movieService, MovieResponse } from '@/services/movieService';
 import { orderService, OrderResponse } from '@/services/orderService';
 import { customerService, CustomerResponse } from '@/services/customerService';
+import { reportService, DailyRevenueResponse, OccupancyResponse, DashboardOverviewResponse } from '@/services/reportService';
+import { branchService, BranchResponse } from '@/services/branchService';
 import { useAuthStore } from '@/stores/authStore';
+import { useSystemStore } from '@/stores/systemStore';
 import { useRouter } from 'next/navigation';
+import { format, addDays } from 'date-fns';
+import { 
+  DollarSign, 
+  Ticket, 
+  Users, 
+  Film, 
+  MessageSquare, 
+  Star,
+  TrendingUp
+} from 'lucide-react';
 
 // --- COMPONENTS ---
 
@@ -24,26 +37,39 @@ function Heading() {
   );
 }
 
-function Container() {
+function Container({ isManager, branches, selectedBranchId, setSelectedBranchId }: any) {
   return (
     <div className="content-stretch flex flex-col gap-[4px] items-start relative shrink-0 w-full">
       <Heading />
-      <div className="text-[#596063] text-[14px]">
-        <p>Real-time performance metrics for Cinema (All Branches).</p>
+      <div className="flex items-center gap-3">
+        <div className="text-[#596063] text-[14px]">
+          <p>{isManager ? 'Real-time performance metrics for your branch.' : 'Real-time performance metrics for Cinema.'}</p>
+        </div>
+        {!isManager && (
+          <select 
+            value={selectedBranchId} 
+            onChange={(e) => setSelectedBranchId(e.target.value)}
+            className="bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-1.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+          >
+            <option value="all">All Branches</option>
+            {branches.map((b: any) => (
+              <option key={b.branchId} value={b.branchId}>{b.bName}</option>
+            ))}
+          </select>
+        )}
       </div>
     </div>
   );
 }
 
 // Reusable KPI Card Component
-function KpiCard({ title, value, iconPath, iconColor, trend, isCurrency = false }: any) {
+function KpiCard({ title, value, Icon, iconColor, trend, isCurrency = false }: any) {
+  const formatCurrency = useSystemStore(state => state.formatCurrency);
   return (
     <div className="bg-white p-6 relative rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] flex flex-col justify-between h-[204px]">
       <div className="flex items-start justify-between">
-        <div className="h-[32px] w-[38px] rounded-[12px] flex items-center justify-center" style={{ backgroundColor: `${iconColor}1A` }}>
-          <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
-            <path d={iconPath} fill={iconColor} />
-          </svg>
+        <div className="h-[38px] w-[38px] rounded-[12px] flex items-center justify-center" style={{ backgroundColor: `${iconColor}1A` }}>
+          <Icon size={20} color={iconColor} />
         </div>
         <div className="bg-[rgba(111,251,190,0.2)] px-2 py-1 rounded-full flex items-center gap-1">
           <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[6px] border-b-[#006D4A]" />
@@ -53,35 +79,60 @@ function KpiCard({ title, value, iconPath, iconColor, trend, isCurrency = false 
       <div>
         <p className="text-[12px] font-bold text-[rgba(89,96,99,0.6)] tracking-[1.2px] uppercase">{title}</p>
         <p className="text-[24px] font-black text-[#2d3337] mt-1">
-          {isCurrency ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : value.toLocaleString()}
+          {isCurrency ? formatCurrency(value) : value.toLocaleString()}
         </p>
       </div>
-      <div className="h-[32px] w-full bg-indigo-50/30 rounded-lg animate-pulse" />
     </div>
   );
 }
 
-function RevenueChart({ orders }: { orders: OrderResponse[] }) {
-  // Giả lập biểu đồ dựa trên dữ liệu thật (chia nhỏ doanh thu 7 ngày gần nhất)
+function RevenueChart({ data }: { data: DailyRevenueResponse[] }) {
+  const formatCurrency = useSystemStore(state => state.formatCurrency);
+  
+  // Fill gaps for the last 7 days
+  const chartData = useMemo(() => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = addDays(new Date(), -i);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const existing = data.find(d => d.date === dateStr);
+      days.push({
+        date: dateStr,
+        revenue: existing?.revenue || 0,
+        label: format(date, 'EEE')
+      });
+    }
+    return days;
+  }, [data]);
+
+  const maxRevenue = Math.max(...chartData.map(d => d.revenue), 100);
+
   return (
     <div className="bg-white col-[1/span_2] rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] p-6">
       <div className="flex justify-between items-center mb-8">
         <div>
           <h4 className="text-[18px] font-bold text-[#2d3337]">Revenue Analytics</h4>
-          <p className="text-[12px] text-[#596063]">Daily revenue trends from recent transactions</p>
+          <p className="text-[12px] text-[#596063]">Daily revenue trends (Last 7 Days)</p>
         </div>
         <div className="flex gap-2">
           <button className="bg-[#f1f4f6] px-3 py-1 rounded-lg text-[12px] font-bold text-[#596063]">Month</button>
           <button className="bg-[#4a4bd7] px-3 py-1 rounded-lg text-[12px] font-bold text-white shadow-sm">Week</button>
         </div>
       </div>
-      <div className="h-[256px] flex items-end justify-between gap-2">
-        {[0.4, 0.6, 0.9, 0.5, 0.8, 0.7, 1].map((scale, i) => (
-          <div key={i} className="flex-1 bg-indigo-50 rounded-t-lg relative group">
-            <div
-              className="absolute bottom-0 left-0 right-0 bg-indigo-600/40 rounded-t-lg transition-all duration-500"
-              style={{ height: `${scale * 100}%` }}
-            />
+      <div className="h-[256px] flex items-end justify-between gap-2 md:gap-4 px-2">
+        {chartData.map((day, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-2 group h-full max-w-[60px]">
+            <div className="flex-1 w-full bg-indigo-50/30 rounded-t-xl relative overflow-hidden">
+              <div
+                className="absolute bottom-0 left-0 right-0 bg-[#4a4bd7] rounded-t-xl transition-all duration-700 ease-out group-hover:brightness-110"
+                style={{ height: `${(day.revenue / maxRevenue) * 100}%` }}
+              >
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#2d3337] text-white text-[10px] py-1.5 px-3 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity shadow-xl z-20 pointer-events-none">
+                  {formatCurrency(day.revenue)}
+                </div>
+              </div>
+            </div>
+            <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">{day.label}</span>
           </div>
         ))}
       </div>
@@ -89,36 +140,37 @@ function RevenueChart({ orders }: { orders: OrderResponse[] }) {
   );
 }
 
-function OccupancyChart() {
+function OccupancyChart({ rate, latestMovies }: { rate: number, latestMovies: MovieResponse[] }) {
   return (
     <div className="bg-white p-6 rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] relative h-[424px]">
       <h4 className="text-[18px] font-bold text-[#2d3337]">Seat Occupancy</h4>
-      <p className="text-[12px] text-[#596063] mb-8">Average by screening type</p>
+      <p className="text-[12px] text-[#596063] mb-8">Average across all current screenings</p>
 
       <div className="flex justify-center my-10 relative">
         <svg className="size-[192px]" viewBox="0 0 192 192">
           <circle cx="96" cy="96" r="80" stroke="#EAEEF1" strokeWidth="16" fill="none" />
-          <circle cx="96" cy="96" r="80" stroke="#4A4BD7" strokeWidth="20" fill="none" strokeDasharray="350 502" strokeLinecap="round" />
-          <circle cx="96" cy="96" r="80" stroke="#842CD3" strokeWidth="20" fill="none" strokeDasharray="100 502" strokeDashoffset="-360" strokeLinecap="round" />
+          <circle
+            cx="96" cy="96" r="80"
+            stroke="#4A4BD7" strokeWidth="20" fill="none"
+            strokeDasharray={`${(rate / 100) * 502} 502`}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[24px] font-extrabold text-[#2d3337]">78%</span>
+          <span className="text-[24px] font-extrabold text-[#2d3337]">{Math.round(rate)}%</span>
           <span className="text-[10px] font-bold text-gray-400 uppercase">Average</span>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {[
-          { label: 'Standard Halls', val: '65%', color: '#4a4bd7' },
-          { label: 'VIP Suites', val: '25%', color: '#842cd3' },
-          { label: 'Private Bookings', val: '10%', color: '#eaeef1' }
-        ].map((item, i) => (
+      <div className="space-y-3 overflow-y-auto max-h-[120px] pr-2 custom-scrollbar">
+        {latestMovies.slice(0, 3).map((movie, i) => (
           <div key={i} className="flex justify-between items-center text-[12px]">
-            <div className="flex items-center gap-2">
-              <div className="size-2 rounded-full" style={{ backgroundColor: item.color }} />
-              <span className="text-[#596063]">{item.label}</span>
+            <div className="flex items-center gap-2 truncate mr-2">
+              <div className="size-2 shrink-0 rounded-full bg-[#4a4bd7]" />
+              <span className="text-[#596063] truncate">{movie.mName}</span>
             </div>
-            <span className="font-bold text-[#2d3337]">{item.val}</span>
+            <span className="font-bold text-[#2d3337] shrink-0">Active</span>
           </div>
         ))}
       </div>
@@ -128,6 +180,7 @@ function OccupancyChart() {
 
 function RecentOrders({ orders }: { orders: OrderResponse[] }) {
   const router = useRouter();
+  const formatCurrency = useSystemStore(state => state.formatCurrency);
   return (
     <div className="bg-white col-[1/span_2] rounded-[16px] shadow-[0px_12px_32px_0px_rgba(45,51,55,0.06)] p-6">
       <div className="flex justify-between items-center mb-6">
@@ -148,14 +201,16 @@ function RecentOrders({ orders }: { orders: OrderResponse[] }) {
           {orders.map((order, i) => (
             <tr key={order.orderId || i} className="text-sm">
               <td className="py-4 font-medium text-indigo-600">#{order.orderId}</td>
-              <td className="py-4 font-semibold text-[#2d3337]">Khách Hàng</td>
-              <td className="py-4 text-[#596063]">Interstellar (IMAX)</td>
+              <td className="py-4 font-semibold text-[#2d3337]">{order.customer?.cName || `Guest #${order.orderId % 1000}`}</td>
+              <td className="py-4 text-[#596063] truncate max-w-[200px]">
+                {order.ticketDetails?.[0]?.movieName || "Combo/Product Only"}
+              </td>
               <td className="py-4">
-                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${order.orderStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${order.orderStatus === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                   {order.orderStatus}
                 </span>
               </td>
-              <td className="py-4 text-right font-bold text-[#2d3337]">${order.total.toFixed(2)}</td>
+              <td className="py-4 text-right font-bold text-[#2d3337]">{formatCurrency(order.total)}</td>
             </tr>
           ))}
         </tbody>
@@ -202,40 +257,38 @@ function LatestMovies({ movies }: { movies: MovieResponse[] }) {
 // --- MAIN PAGE ---
 
 export default function DashboardPage() {
-  const [movies, setMovies] = useState<MovieResponse[]>([]);
-  const [orders, setOrders] = useState<OrderResponse[]>([]);
-  const [customersCount, setCustomersCount] = useState(0);
+  const [overview, setOverview] = useState<DashboardOverviewResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
 
   const { user } = useAuthStore();
   const isManager = user?.role === 'MANAGER';
   const managerBranchId = user?.branchId;
+  const activeBranchId = isManager 
+    ? managerBranchId 
+    : (selectedBranchId !== 'all' ? Number(selectedBranchId) : undefined);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const bData = await branchService.getAll();
+        setBranches(Array.isArray(bData) ? bData : []);
+      } catch (err) {
+        console.error("Failed to load branches", err);
+      }
+    };
+    if (!isManager) {
+      fetchBranches();
+    }
+  }, [isManager]);
 
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
         setIsLoading(true);
-        const [movieData, orderData, customerData] = await Promise.all([
-          movieService.getAll(),
-          orderService.getAll(isManager && managerBranchId !== undefined ? managerBranchId : undefined),
-          customerService.getAll()
-        ]);
-
-        // Normalize Movie Data
-        const rawMovies = Array.isArray(movieData) ? movieData : [];
-        const latest = [...rawMovies]
-          .sort((a, b) => new Date(b.releaseDate || 0).getTime() - new Date(a.releaseDate || 0).getTime())
-          .slice(0, 4);
-        setMovies(latest);
-
-        // Normalize Order Data
-        const rawOrders = Array.isArray(orderData) ? orderData : [];
-        setOrders(rawOrders.slice(0, 3));
-
-        // Normalize Customer Data
-        const rawCustomers = Array.isArray(customerData) ? customerData : [];
-        setCustomersCount(rawCustomers.length);
-
+        const data = await reportService.getOverview(activeBranchId);
+        setOverview(data);
       } catch (error) {
         console.error("Dashboard Data Fetch Error:", error);
       } finally {
@@ -244,10 +297,21 @@ export default function DashboardPage() {
     };
 
     loadDashboardData();
-  }, []);
+  }, [activeBranchId]);
 
   // Tính toán doanh thu thực tế
-  const totalRevenue = useMemo(() => orders.reduce((sum, o) => sum + o.total, 0), [orders]);
+  // Real Analytics derived from generalStats
+  // Derived data from unified overview
+  const totalRevenue = overview?.totalRevenue || 0;
+  const totalTickets = overview?.ticketsSold || 0;
+  const activeMoviesCount = overview?.activeMovies || 0;
+  const totalCustomers = overview?.totalCustomers || 0;
+  const totalReviews = overview?.totalReviews || 0;
+  const averageRating = overview?.averageRating || 0;
+  const dailyRevenue = overview?.revenueTrends || [];
+  const occupancyRate = overview?.seatOccupancy || 0;
+  const orders = overview?.recentOrders || [];
+  const movies = overview?.latestMovies || [];
 
   if (isLoading) {
     return (
@@ -260,45 +324,59 @@ export default function DashboardPage() {
   return (
     <div className="w-full max-w-[1600px] mx-auto bg-[#FBF7FF] min-h-screen">
       <div className="content-stretch flex flex-col gap-[32px] items-start pb-[48px] px-[32px] relative w-full">
-        <Container />
+        <Container isManager={isManager} branches={branches} selectedBranchId={selectedBranchId} setSelectedBranchId={setSelectedBranchId} />
 
         {/* KPI Grid - Giờ đây đã lấy dữ liệu thật */}
-        <div className="gap-x-[24px] gap-y-[24px] grid grid-cols-4 relative shrink-0 w-full">
+        <div className="gap-x-[24px] gap-y-[24px] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 relative shrink-0 w-full">
           <KpiCard
             title="Total Revenue"
             value={totalRevenue}
             isCurrency={true}
-            iconPath={svgPaths.p3f437800}
+            Icon={DollarSign}
             iconColor="#4A4BD7"
-            trend="12.4%"
+            trend="Real-time"
           />
           <KpiCard
             title="Tickets Sold"
-            value={orders.length * 2} // Giả định trung bình 2 vé/order
-            iconPath={svgPaths.p38027400}
+            value={totalTickets}
+            Icon={Ticket}
             iconColor="#842CD3"
-            trend="8.1%"
+            trend="Active"
+          />
+          <KpiCard
+            title="Occupancy"
+            value={`${occupancyRate}%`}
+            Icon={Users}
+            iconColor="#006D4A"
+            trend="Efficiency"
           />
           <KpiCard
             title="Active Movies"
-            value={movies.length}
-            iconPath={svgPaths.p349bd800}
-            iconColor="#006D4A"
-            trend="Stable"
+            value={activeMoviesCount}
+            Icon={Film}
+            iconColor="#ef4444"
+            trend="In Theaters"
           />
           <KpiCard
-            title="Customers"
-            value={customersCount}
-            iconPath={svgPaths.p2be64098}
-            iconColor="#AC3149"
-            trend="24%"
+            title="Total Reviews"
+            value={totalReviews}
+            Icon={MessageSquare}
+            iconColor="#8b5cf6"
+            trend="Feedback"
+          />
+          <KpiCard
+            title="Avg. Rating"
+            value={`${averageRating} / 5`}
+            Icon={Star}
+            iconColor="#f59e0b"
+            trend="Quality"
           />
         </div>
 
         {/* Charts Layout */}
         <div className="gap-x-[24px] gap-y-[24px] grid grid-cols-3 w-full">
-          <RevenueChart orders={orders} />
-          <OccupancyChart />
+          <RevenueChart data={dailyRevenue} />
+          <OccupancyChart rate={occupancyRate} latestMovies={movies} />
         </div>
 
         {/* Tables & Columns */}

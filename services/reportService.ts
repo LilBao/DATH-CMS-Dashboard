@@ -1,4 +1,6 @@
 import api from './api';
+import { MovieResponse } from './movieService';
+import { OrderResponse } from './orderService';
 
 export interface BranchRevenueResponse {
   branchId: number;
@@ -32,6 +34,19 @@ export interface OccupancyResponse {
   occupancyRate: number;
 }
 
+export interface DashboardOverviewResponse {
+  totalRevenue: number;
+  ticketsSold: number;
+  activeMovies: number;
+  totalCustomers: number;
+  totalReviews: number;
+  averageRating: number;
+  revenueTrends: DailyRevenueResponse[];
+  seatOccupancy: number;
+  recentOrders: OrderResponse[];
+  latestMovies: MovieResponse[];
+}
+
 export const reportService = {
   getDailyRevenue: async (startDate?: string, endDate?: string, branchId?: number): Promise<DailyRevenueResponse[]> => {
     const response = await api.get('/statistics/revenue/daily', {
@@ -61,8 +76,10 @@ export const reportService = {
     return response.data;
   },
 
-  getGeneralStats: async () => {
-    const response = await api.get('/statistics/stats');
+  getOverview: async (branchId?: number): Promise<DashboardOverviewResponse> => {
+    const response = await api.get('/statistics/overview', {
+      params: { branchId }
+    });
     return response.data;
   }
 };

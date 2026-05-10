@@ -47,7 +47,7 @@ export default function Navigation() {
   };
 
   const menuItems = [
-    { id: 'dashboard', path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'dashboard', path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'MANAGER'] },
     { id: 'movies', path: '/movies', label: 'Movies', icon: Film, roles: ['ADMIN', 'MANAGER'] },
     { id: 'showtimes', path: '/showtimes', label: 'Showtimes', icon: CalendarDays, roles: ['ADMIN', 'MANAGER'] },
     { id: 'branches', path: '/branches', label: 'Branches', icon: MapPin, roles: ['ADMIN'] },
@@ -58,7 +58,7 @@ export default function Navigation() {
 
     { id: 'orders', path: '/orders', label: 'Orders', icon: Receipt, roles: ['ADMIN', 'MANAGER', 'STAFF'] },
     { id: 'coupons', path: '/coupons', label: 'Coupons', icon: Ticket, roles: ['ADMIN', 'MANAGER'] },
-    { id: 'products', path: '/products', label: 'Products', icon: ShoppingBag, roles: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'products', path: '/products', label: 'Products', icon: ShoppingBag, roles: ['ADMIN', 'MANAGER'] },
     { id: 'reports', path: '/reports_analytics', label: 'Reports', icon: BarChart, roles: ['ADMIN', 'MANAGER'] },
     { id: 'settings', path: '/settings', label: 'Settings', icon: Settings, roles: ['ADMIN'] },
   ];

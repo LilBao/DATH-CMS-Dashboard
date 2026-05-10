@@ -9,7 +9,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { reportService, DailyRevenueResponse, MovieRevenueResponse, OccupancyResponse } from '@/services/reportService';
+import { branchService, BranchResponse } from '@/services/branchService';
 import { useAuthStore } from '@/stores/authStore';
+import { useSystemStore } from '@/stores/systemStore';
 import {
   AreaChart,
   Area,
@@ -30,6 +32,7 @@ import { format } from 'date-fns';
 type TimeRange = '30days' | 'quarterly' | 'custom';
 
 export default function ReportsAnalyticsPage() {
+  const formatCurrency = useSystemStore(state => state.formatCurrency);
   const [timeRange, setTimeRange] = useState<TimeRange>('30days');
   const [isLoading, setIsLoading] = useState(true);
   const [data, setData] = useState<{
@@ -42,9 +45,28 @@ export default function ReportsAnalyticsPage() {
     occupancy: []
   });
 
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
+
   const { user } = useAuthStore();
   const isManager = user?.role === 'MANAGER';
-  const branchId = isManager ? user?.branchId : undefined;
+  const activeBranchId = isManager 
+    ? user?.branchId 
+    : (selectedBranchId !== 'all' ? Number(selectedBranchId) : undefined);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const bData = await branchService.getAll();
+        setBranches(Array.isArray(bData) ? bData : []);
+      } catch (err) {
+        console.error("Failed to load branches", err);
+      }
+    };
+    if (!isManager) {
+      fetchBranches();
+    }
+  }, [isManager]);
 
   const loadAnalyticsData = async () => {
     try {
@@ -52,9 +74,9 @@ export default function ReportsAnalyticsPage() {
       
       // Fetch data based on role
       const [dailyRev, movieRev, occupancy] = await Promise.all([
-        reportService.getDailyRevenue(undefined, undefined, branchId),
-        reportService.getMovieRevenue(undefined, undefined, branchId),
-        reportService.getOccupancyRate(branchId?.toString())
+        reportService.getDailyRevenue(undefined, undefined, activeBranchId),
+        reportService.getMovieRevenue(undefined, undefined, activeBranchId),
+        reportService.getOccupancyRate(activeBranchId?.toString())
       ]);
       
       setData({
@@ -72,7 +94,7 @@ export default function ReportsAnalyticsPage() {
 
   useEffect(() => {
     loadAnalyticsData();
-  }, [branchId]);
+  }, [activeBranchId]);
 
   const stats = useMemo(() => {
     const totalRevenue = data.daily.reduce((sum, item) => sum + item.revenue, 0);
@@ -81,13 +103,13 @@ export default function ReportsAnalyticsPage() {
       ? data.occupancy.reduce((sum, item) => sum + item.occupancyRate, 0) / data.occupancy.length 
       : 0;
     const topMovie = data.movie.length > 0 
-      ? data.movie.sort((a, b) => b.revenue - a.revenue)[0].movieName 
+      ? [...data.movie].sort((a, b) => b.revenue - a.revenue)[0].movieName 
       : 'N/A';
 
     return [
       { 
         title: 'Tổng doanh thu', 
-        value: `${totalRevenue.toLocaleString()} ₫`, 
+        value: formatCurrency(totalRevenue), 
         trend: '+12.5%', 
         isPositive: true, 
         icon: <DollarSign className="w-5 h-5" />,
@@ -141,9 +163,23 @@ export default function ReportsAnalyticsPage() {
           <h1 className="text-[44px] font-black text-[#2d3337] tracking-tighter leading-tight uppercase">
             Báo cáo & Thống kê
           </h1>
-          <p className="text-gray-500 font-medium">
-            {isManager ? `Dữ liệu tại chi nhánh của bạn` : 'Toàn bộ hệ thống CMS Cinema'}
-          </p>
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-gray-500 font-medium">
+              {isManager ? `Dữ liệu tại chi nhánh của bạn` : 'Dữ liệu báo cáo hệ thống'}
+            </p>
+            {!isManager && (
+              <select 
+                value={selectedBranchId} 
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-1.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="all">Toàn bộ chi nhánh</option>
+                {branches.map(b => (
+                  <option key={b.branchId} value={b.branchId}>{b.bName}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
@@ -227,7 +263,7 @@ export default function ReportsAnalyticsPage() {
                 <Tooltip 
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
                   labelStyle={{ fontWeight: 800, color: '#1f2937', marginBottom: '4px' }}
-                  formatter={(val: any) => [`${Number(val).toLocaleString()} ₫`, 'Doanh thu']}
+                  formatter={(val: any) => [formatCurrency(Number(val)), 'Doanh thu']}
                 />
                 <Area 
                   type="monotone" 
@@ -247,7 +283,7 @@ export default function ReportsAnalyticsPage() {
           <h3 className="text-xl font-black text-gray-800 mb-6 tracking-tight uppercase">Top phim doanh thu</h3>
           <div className="flex-1 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.movie} layout="vertical">
+              <BarChart data={[...data.movie].sort((a, b) => b.revenue - a.revenue)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
                 <XAxis type="number" hide />
                 <YAxis 
@@ -261,7 +297,7 @@ export default function ReportsAnalyticsPage() {
                 <Tooltip 
                   cursor={{ fill: 'transparent' }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  formatter={(val: any) => [`${Number(val).toLocaleString()} ₫`, 'Doanh thu']}
+                  formatter={(val: any) => [formatCurrency(Number(val)), 'Doanh thu']}
                 />
                 <Bar dataKey="revenue" radius={[0, 10, 10, 0]}>
                   {data.movie.map((entry, index) => (

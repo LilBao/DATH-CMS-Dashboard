@@ -7,6 +7,7 @@ import AuthCheck from "./components/AuthCheck";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
+import { useSystemStore } from "@/stores/systemStore";
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 const inter = Inter({ subsets: ["latin"] });
@@ -20,9 +21,11 @@ export default function RootLayout({
 
   // Kiểm tra nếu đang ở trang login
   const isLoginPage = pathname === "/login";
+  
+  const { settings } = useSystemStore();
 
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
+    <html lang="en" className={cn("font-sans", geist.variable)} style={{ "--primary-color": settings.primaryColor } as any}>
       <body className={`${inter.className} bg-[#f7f9fb] text-gray-900 antialiased`}>
         <AuthCheck>
           <div className="flex min-h-screen relative">

@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { X, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { branchService, BranchResponse, BranchRequest } from '@/services/branchService';
+import { employeeService } from '@/services/employeeService';
+import { useEffect } from 'react';
 
 interface BranchAddModalProps {
   isOpen: boolean;
@@ -14,6 +16,23 @@ interface BranchAddModalProps {
 
 export default function BranchAddModal({ isOpen, onClose, onSuccess, existingBranches }: BranchAddModalProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const [managers, setManagers] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchManagers = async () => {
+      try {
+        const data = await employeeService.getAll();
+        // Lọc những nhân viên có role là MANAGER
+        const filtered = data.filter(emp => emp.userType.toUpperCase().includes('MANAGER'));
+        setManagers(filtered);
+      } catch (err) {
+        console.error("Failed to load managers", err);
+      }
+    };
+    if (isOpen) {
+      fetchManagers();
+    }
+  }, [isOpen]);
 
   const generateNextId = () => {
     if (existingBranches.length === 0) return 1;
@@ -33,7 +52,9 @@ export default function BranchAddModal({ isOpen, onClose, onSuccess, existingBra
     const newBranchData: BranchRequest = {
       bName: formData.get('name') as string,
       bAddress: formData.get('address') as string,
-      phoneNumbers: [formData.get('phone') as string]
+      managerId: formData.get('managerId') as string,
+      phoneNumbers: [formData.get('phone') as string],
+      isActive: true, // Mặc định là true khi tạo mới
     };
 
     try {
@@ -78,8 +99,18 @@ export default function BranchAddModal({ isOpen, onClose, onSuccess, existingBra
               <input name="phone" required className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="024..." />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quản lý</label>
-              <input name="manager" className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Tên quản lý" />
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quản lý phụ trách</label>
+              <select 
+                name="managerId" 
+                className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="">Chọn quản lý...</option>
+                {managers.map(m => (
+                  <option key={m.eUserId} value={m.eUserId}>
+                    {m.eName} (ID: {m.eUserId})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           

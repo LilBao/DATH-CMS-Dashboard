@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { orderService, OrderResponse } from '@/services/orderService';
+import { branchService, BranchResponse } from '@/services/branchService';
 import { useAuthStore } from '@/stores/authStore';
 import OrderFormModal from '../components/OrderFormModal';
 import { ConfirmModal } from '../components/ui/confirm-modal';
@@ -29,13 +30,35 @@ export default function OrdersPage() {
 
   const { user } = useAuthStore();
   const isManager = user?.role === 'MANAGER';
+  const isStaff = user?.role === 'STAFF';
+  const isAdmin = user?.role === 'ADMIN';
   const managerBranchId = user?.branchId;
+
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
+  const activeBranchId = (isManager || isStaff) 
+    ? managerBranchId 
+    : (selectedBranchId !== 'all' ? Number(selectedBranchId) : undefined);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const bData = await branchService.getAll();
+        setBranches(Array.isArray(bData) ? bData : []);
+      } catch (err) {
+        console.error("Failed to load branches", err);
+      }
+    };
+    if (isAdmin) {
+      fetchBranches();
+    }
+  }, [isAdmin]);
 
   // Fetch dữ liệu từ Service
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
-      const data = await orderService.getAll();
+      const data = await orderService.getAll(activeBranchId);
       setOrders(data);
     } catch (error) {
       toast.error("Không thể nạp danh sách hóa đơn từ máy chủ.");
@@ -46,7 +69,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [activeBranchId]);
 
   // Chức năng Xóa
   const handleDelete = (id: number) => {
@@ -110,7 +133,21 @@ export default function OrdersPage() {
         <div>
           <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-[2px] mb-1 block">Sales</span>
           <h1 className="text-[36px] font-black text-[#2d3337] tracking-tight leading-tight uppercase">Orders & Tickets</h1>
-          <p className="text-gray-500 text-sm mt-1 font-medium">Giám sát giao dịch thời gian thực và quản lý vé đặt.</p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-gray-500 text-sm font-medium">Giám sát giao dịch thời gian thực và quản lý vé đặt.</p>
+            {isAdmin && (
+              <select 
+                value={selectedBranchId} 
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-1 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer ml-2"
+              >
+                <option value="all">Toàn bộ chi nhánh</option>
+                {branches.map((b: any) => (
+                  <option key={b.branchId} value={b.branchId}>{b.bName}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
         <div className="flex gap-3">
           <button className="bg-white border border-gray-100 text-gray-700 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-sm hover:bg-gray-50 transition-all text-xs uppercase tracking-wider">
@@ -190,11 +227,11 @@ export default function OrdersPage() {
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-indigo-100 uppercase">
-                        K
+                        {(order.customer?.cName?.[0] || 'G')}
                       </div>
                       <div>
-                        <p className="text-sm font-black text-gray-800 leading-tight">Khách Hàng</p>
-                        <p className="text-[11px] text-gray-400 font-medium">Ẩn danh</p>
+                        <p className="text-sm font-black text-gray-800 leading-tight">{order.customer?.cName || "Guest Customer"}</p>
+                        <p className="text-[11px] text-gray-400 font-medium">{order.customer?.email || "No email provided"}</p>
                       </div>
                     </div>
                   </td>

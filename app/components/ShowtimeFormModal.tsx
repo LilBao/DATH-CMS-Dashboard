@@ -24,6 +24,9 @@ export default function ShowtimeFormDrawer({
   const [selectedMovieId, setSelectedMovieId] = useState<number | ''>('');
   const [isMovieDropdownOpen, setIsMovieDropdownOpen] = useState(false);
   const [rooms, setRooms] = useState<ScreenRoomResponse[]>([]);
+  const [date, setDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [roomId, setRoomId] = useState<number | ''>('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Khôi phục dữ liệu khi mở Drawer
@@ -32,9 +35,15 @@ export default function ShowtimeFormDrawer({
       const movie = movies.find(m => m.movieId === selectedShowtime.movieId);
       setMovieSearchQuery(movie?.mName || '');
       setSelectedMovieId(selectedShowtime.movieId);
+      setDate(selectedShowtime.day);
+      setStartTime(selectedShowtime.startTime);
+      setRoomId(selectedShowtime.roomId);
     } else {
       setMovieSearchQuery('');
       setSelectedMovieId('');
+      setDate(selectedDate);
+      setStartTime('');
+      setRoomId('');
     }
 
     // Load rooms for the selected branch
@@ -48,7 +57,7 @@ export default function ShowtimeFormDrawer({
       }
     };
     if (isOpen) loadRooms();
-  }, [selectedShowtime, isOpen, movies, selectedBranch]);
+  }, [selectedShowtime, isOpen, movies, selectedBranch, selectedDate]);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -137,24 +146,40 @@ export default function ShowtimeFormDrawer({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Date</label>
-                <input name="date" type="date" required defaultValue={selectedShowtime?.day || selectedDate} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
+                <input 
+                  name="date" 
+                  type="date" 
+                  required 
+                  value={date} 
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" 
+                />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Start Time</label>
-                <input name="startTime" type="time" required defaultValue={selectedShowtime?.startTime} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
+                <input 
+                  name="startTime" 
+                  type="time" 
+                  required 
+                  value={startTime} 
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" 
+                />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Room</label>
-              <select name="room" defaultValue={selectedShowtime?.roomId} className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none">
-                {rooms.length > 0 ? (
-                  rooms.map(room => (
-                    <option key={room.roomId} value={room.roomId}>{room.rType} - Room {room.roomId}</option>
-                  ))
-                ) : (
-                  <option value="">No rooms available</option>
-                )}
+              <select 
+                name="room" 
+                value={roomId} 
+                onChange={(e) => setRoomId(Number(e.target.value))}
+                className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none"
+              >
+                <option value="">Select Room</option>
+                {rooms.map(room => (
+                  <option key={room.roomId} value={room.roomId}>{room.rType} - Room {room.roomId}</option>
+                ))}
               </select>
             </div>
           </div>

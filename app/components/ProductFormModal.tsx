@@ -41,7 +41,7 @@ export default function ProductFormModal({ isOpen, onClose, onSave, initialData 
     } else {
       setFormData({
         name: "",
-        category: "",
+        category: "Combo",
         price: 0,
         quantity: 0,
         type: "Food",
@@ -134,12 +134,19 @@ export default function ProductFormModal({ isOpen, onClose, onSave, initialData 
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Danh mục</label>
-                <input
+                <select
                   value={formData.category}
                   onChange={e => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="VD: Combo"
-                />
+                  disabled={formData.type === 'Merchandise'}
+                  className={`w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 ${formData.type === 'Merchandise' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <option value="" disabled>-- Chọn danh mục --</option>
+                  <option value="Combo">Combo</option>
+                  <option value="Popcorn">Popcorn (Bắp)</option>
+                  <option value="Drink">Drink (Nước)</option>
+                  <option value="Snack">Snack (Đồ ăn nhẹ)</option>
+                  <option value="Other">Other (Khác)</option>
+                </select>
               </div>
             </div>
 

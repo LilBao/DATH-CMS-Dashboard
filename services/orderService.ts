@@ -1,4 +1,5 @@
 import api from './api';
+import { CustomerResponse } from './customerService';
 
 export interface TicketRequest {
   showtimeId: number;
@@ -20,6 +21,8 @@ export interface AddonItemRequest {
 export interface OrderRequest {
   paymentMethod: string;
   couponId?: number;
+  customerId?: string;
+  branchId?: number;
   tickets: TicketRequest[];
   addons?: AddonItemRequest[];
 }
@@ -53,6 +56,7 @@ export interface OrderResponse {
   paymentUrl?: string | null;
   ticketDetails: TicketResponse[];
   addonDetails: AddonResponse[];
+  customer?: CustomerResponse;
 }
 
 export const orderService = {
@@ -76,13 +80,13 @@ export const orderService = {
 
   // Xử lý hoàn tiền hoặc thay đổi trạng thái
   updateStatus: async (id: number, status: string): Promise<OrderResponse> => {
-    const response = await api.patch(`/orders/${id}`, { orderStatus: status });
+    const response = await api.put(`/orders/${id}`, { orderStatus: status });
     return response.data;
   },
 
   // Cập nhật thông tin chung
   update: async (id: number, data: Partial<OrderRequest>): Promise<OrderResponse> => {
-    const response = await api.patch(`/orders/${id}`, data);
+    const response = await api.put(`/orders/${id}`, data);
     return response.data;
   },
 

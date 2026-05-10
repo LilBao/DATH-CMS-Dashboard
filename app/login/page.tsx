@@ -57,8 +57,12 @@ export default function LoginPage() {
 
       toast.success("Đăng nhập thành công!");
 
-      // Điều hướng về Dashboard
-      router.push("/");
+      // Điều hướng dựa trên vai trò
+      if (userData.role?.toUpperCase() === 'STAFF') {
+        router.push("/orders");
+      } else {
+        router.push("/");
+      }
 
     } catch (error: any) {
       // Xử lý lỗi từ Axios

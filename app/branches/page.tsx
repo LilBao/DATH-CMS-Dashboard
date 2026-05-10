@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { branchService, BranchResponse, BranchRequest } from '@/services/branchService';
+import { employeeService } from '@/services/employeeService';
 import BranchAddModal from '../components/BranchAddModal';
 import { ConfirmModal } from '../components/ui/confirm-modal';
 
@@ -15,6 +16,7 @@ export default function BranchesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [managers, setManagers] = useState<any[]>([]);
 
   // State cho Confirm Delete
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -28,8 +30,12 @@ export default function BranchesPage() {
       if (data.length > 0 && !selectedBranch) {
         setSelectedBranch(data[0]);
       }
+      
+      // Load Managers
+      const empData = await employeeService.getAll();
+      setManagers(empData.filter(e => e.userType.toUpperCase().includes('MANAGER')));
     } catch (error) {
-      toast.error("Không thể nạp danh sách chi nhánh từ máy chủ.");
+      toast.error("Không thể nạp dữ liệu chi nhánh và nhân sự.");
     } finally {
       setIsLoading(false);
     }
@@ -51,6 +57,7 @@ export default function BranchesPage() {
         bAddress: selectedBranch.bAddress,
         phoneNumbers: selectedBranch.phoneNumbers,
         managerId: selectedBranch.managerId,
+        isActive: selectedBranch.isActive,
       };
       const updated = await branchService.update(selectedBranch.branchId, updateData);
       toast.success(`Đã cập nhật chi nhánh: ${selectedBranch.bName}`);
@@ -148,9 +155,10 @@ export default function BranchesPage() {
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
-                      Active
-                    </span>
+                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 ${branch.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${branch.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                      {branch.isActive ? 'Active' : 'Maintenance'}
+                    </div>
                   </td>
                   <td className="px-8 py-5 text-right">
                     <ChevronRight className={`w-5 h-5 transition-transform ${selectedBranch?.branchId === branch.branchId ? 'translate-x-1 text-indigo-500' : 'text-gray-300'}`} />
@@ -202,13 +210,14 @@ export default function BranchesPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Trạng thái</label>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Trạng thái vận hành</label>
                     <select
-                      value="Active"
-                      disabled
-                      className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-black text-gray-800 outline-none opacity-60 cursor-not-allowed"
+                      value={selectedBranch.isActive ? 'true' : 'false'}
+                      onChange={(e) => setSelectedBranch({ ...selectedBranch, isActive: e.target.value === 'true' })}
+                      className={`w-full border-none rounded-2xl px-5 py-4 text-sm font-black outline-none transition-all ${selectedBranch.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}
                     >
-                      <option value="Active">Active</option>
+                      <option value="true">Đang hoạt động (Active)</option>
+                      <option value="false">Tạm dừng (Maintenance)</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -227,12 +236,18 @@ export default function BranchesPage() {
 
                 <div className="space-y-2">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quản lý phụ trách</label>
-                  <input
-                    type="text" required
-                    value={selectedBranch.managerName || ''}
-                    onChange={(e) => setSelectedBranch({ ...selectedBranch, managerName: e.target.value })}
-                    className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <select
+                    value={selectedBranch.managerId || ''}
+                    onChange={(e) => setSelectedBranch({ ...selectedBranch, managerId: e.target.value })}
+                    className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-all"
+                  >
+                    <option value="">Chọn quản lý...</option>
+                    {managers.map(m => (
+                      <option key={m.eUserId} value={m.eUserId}>
+                        {m.eName} (ID: {m.eUserId})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex gap-4 pt-6">

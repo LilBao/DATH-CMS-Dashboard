@@ -11,6 +11,7 @@ export interface EmployeeRequest {
   userType: string;
   branchId: number;
   managerId?: string;
+  avatarUrl: string;
 }
 
 export interface EmployeeResponse {
@@ -22,6 +23,7 @@ export interface EmployeeResponse {
   salary: number;
   userType: string;
   isActive: boolean;
+  avatarUrl: string;
   branchId: number;
   branchName?: string;
   managerId?: string;
@@ -56,6 +58,11 @@ export const employeeService = {
   // Ngừng kích hoạt tài khoản
   deactivate: async (id: string): Promise<void> => {
     await api.patch(`/employees/${id}/deactivate`);
+  },
+
+  // Kích hoạt tài khoản
+  activate: async (id: string): Promise<void> => {
+    await api.patch(`/employees/${id}/activate`);
   },
 
   // Phân ca làm việc cho nhân viên

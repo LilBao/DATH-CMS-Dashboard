@@ -44,7 +44,25 @@ export default function CustomerPage() {
       setCustomers(prev => prev.map(c => c.cUserId === selectedCustomer.cUserId ? selectedCustomer : c));
       setSelectedCustomer(null);
     } catch (error) {
-      toast.error("Lỗi khi lưu thay đổi hồ sơ.");
+      throw error;
+    }
+  };
+
+  const handleToggleStatus = async () => {
+    if (!selectedCustomer) return;
+    setIsSaving(true);
+    try {
+      if (selectedCustomer.isActive) {
+        await customerService.deactivate(selectedCustomer.cUserId);
+        toast.success(`Đã khóa tài khoản khách hàng ${selectedCustomer.cName}`);
+      } else {
+        await customerService.activate(selectedCustomer.cUserId);
+        toast.success(`Đã kích hoạt lại tài khoản khách hàng ${selectedCustomer.cName}`);
+      }
+      fetchCustomers();
+      setSelectedCustomer(null);
+    } catch (error) {
+      toast.error("Lỗi khi thay đổi trạng thái tài khoản.");
     } finally {
       setIsSaving(false);
     }
@@ -255,10 +273,10 @@ export default function CustomerPage() {
                         <Key className="w-4 h-4" /> Đặt lại Pass
                       </button>
                       <button
-                        onClick={() => setSelectedCustomer({ ...selectedCustomer, isActive: false })}
-                        className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-700 py-4 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-2 border border-transparent hover:border-rose-200 uppercase tracking-widest"
+                        onClick={handleToggleStatus}
+                        className={`flex-1 py-4 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-2 border border-transparent uppercase tracking-widest ${selectedCustomer.isActive ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 hover:border-rose-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-200'}`}
                       >
-                        <Shield className="w-4 h-4" /> Khóa thẻ
+                        <Shield className="w-4 h-4" /> {selectedCustomer.isActive ? 'Khóa thẻ' : 'Mở khóa'}
                       </button>
                     </div>
                   </div>

@@ -5,6 +5,7 @@ export interface BranchRequest {
   bAddress: string;
   managerId?: string;
   phoneNumbers?: string[];
+  isActive?: boolean;
 }
 
 export interface BranchResponse {
@@ -15,6 +16,7 @@ export interface BranchResponse {
   managerId?: string;
   phoneNumbers: string[];
   totalRooms: number;
+  isActive: boolean;
 }
 
 export const branchService = {

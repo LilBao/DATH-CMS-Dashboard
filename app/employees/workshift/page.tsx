@@ -24,7 +24,7 @@ const generateWorkWeek = (baseDate: Date) => {
   });
 };
 
-const hours = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 -> 23:00
+const hours = Array.from({ length: 24 }, (_, i) => i); // 00:00 -> 23:00
 
 const timeToMinutes = (timeStr: string) => {
   if (!timeStr) return 0;
@@ -129,7 +129,7 @@ export default function ShiftPage() {
   const getStyleForShift = (startTime: string, endTime: string, colIndex: number, totalCols: number) => {
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
-    const gridStartMins = 8 * 60;
+    const gridStartMins = 0; // 00:00
     const topPixel = ((startMins - gridStartMins) / 60) * 64;
     const heightPixel = ((endMins - startMins) / 60) * 64;
     
@@ -285,7 +285,7 @@ export default function ShiftPage() {
 
         {/* Time Grid */}
         <div className="flex-1 overflow-y-auto relative custom-scrollbar">
-          <div className="flex relative min-h-[1024px]">
+          <div className="flex relative min-h-[1536px]">
             <div className="w-20 shrink-0 border-r border-gray-100 bg-gray-50/5">
               {hours.map(hour => (
                 <div key={hour} className="h-[64px] border-b border-gray-50 flex justify-center py-2 relative">
@@ -330,7 +330,11 @@ export default function ShiftPage() {
                               setEmployeeSearchQuery(targetEmp?.eUserId || ''); 
                               setIsDrawerOpen(true); 
                             }}
-                            className={`absolute rounded-xl p-3 cursor-pointer transition-all flex flex-col gap-1 overflow-hidden z-10 shadow-sm border ${getThemeClasses('blue')}`}
+                            className={`absolute rounded-xl p-3 cursor-pointer transition-all flex flex-col gap-1 overflow-hidden z-10 shadow-sm border ${
+                              shift.work.toUpperCase().includes('MANAGER') ? getThemeClasses('lavender') :
+                              shift.work.toUpperCase().includes('ADMIN') ? getThemeClasses('mint') :
+                              getThemeClasses('blue')
+                            }`}
                           >
                             <p className="font-black text-[10px] leading-tight truncate">
                               {shift.employees && shift.employees.length > 0 

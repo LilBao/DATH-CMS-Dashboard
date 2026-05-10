@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Plus, X, ChevronDown, Loader2 } from 'lucide-react';
+import { Plus, X, ChevronDown, Loader2, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -176,10 +176,26 @@ export default function ShowtimesPage() {
     }
   };
 
+  const navigateDate = (direction: number) => {
+    const date = new Date(selectedDate);
+    if (viewMode === 'day') {
+      date.setDate(date.getDate() + direction);
+    } else if (viewMode === 'week') {
+      date.setDate(date.getDate() + (direction * 7));
+    } else if (viewMode === 'month') {
+      date.setMonth(date.getMonth() + direction);
+    }
+    setSelectedDate(formatDate(date));
+  };
+
+  const handleToday = () => {
+    setSelectedDate(formatDate(new Date()));
+  };
+
   // --- DISPLAY HELPERS ---
   const getStyleForShowtime = (st: ShowtimeResponse, dayIndex: number, mode: 'day' | 'week', colIndex: number, totalCols: number) => {
     const { start, end } = getShowtimeRange(st);
-    const startMinutes = start - (8 * 60); // Offset by 8 AM
+    const startMinutes = start; // Offset by 0 AM
     const topPixel = (startMinutes / 60) * 64;
     const heightPixel = ((end - start) / 60) * 64;
 
@@ -243,9 +259,9 @@ export default function ShowtimesPage() {
             <span className="text-xl font-extrabold mt-1 text-blue-600">{dayInfo.date}</span>
           </div>
         </div>
-        <div className="flex relative min-h-[1024px]">
+        <div className="flex relative min-h-[1536px]">
           <div className="w-[80px] shrink-0 border-r border-gray-100 bg-gray-50/50">
-            {Array.from({ length: 16 }, (_, i) => i + 8).map(hour => (
+            {Array.from({ length: 24 }, (_, i) => i).map(hour => (
               <div key={hour} className="h-[64px] border-b border-gray-100 flex justify-center py-2 relative">
                 <span className="text-[11px] font-bold text-gray-400 -mt-5">{hour.toString().padStart(2, '0')}:00</span>
               </div>
@@ -253,7 +269,7 @@ export default function ShowtimesPage() {
           </div>
           <div className="flex-1 relative">
             <div className="absolute inset-0 pointer-events-none flex flex-col">
-              {Array.from({ length: 16 }).map((_, i) => <div key={i} className="h-[64px] border-b border-gray-100 border-dashed w-full" />)}
+              {Array.from({ length: 24 }).map((_, i) => <div key={i} className="h-[64px] border-b border-gray-100 border-dashed w-full" />)}
             </div>
             {columns.map((col, colIndex) => (
               col.map((st, i) => {
@@ -301,9 +317,9 @@ export default function ShowtimesPage() {
             )
           })}
         </div>
-        <div className="flex relative min-h-[1024px]">
+        <div className="flex relative min-h-[1536px]">
           <div className="w-[80px] shrink-0 border-r border-gray-100 bg-gray-50/50">
-            {Array.from({ length: 16 }, (_, i) => i + 8).map(hour => (
+            {Array.from({ length: 24 }, (_, i) => i).map(hour => (
               <div key={hour} className="h-[64px] border-b border-gray-100 flex justify-center py-2 relative">
                 <span className="text-[11px] font-bold text-gray-400 -mt-5">{hour.toString().padStart(2, '0')}:00</span>
               </div>
@@ -314,7 +330,7 @@ export default function ShowtimesPage() {
               {currentWeek.map((_, i) => <div key={i} className="flex-1 border-r border-gray-100 border-dashed" />)}
             </div>
             <div className="absolute inset-0 pointer-events-none flex flex-col">
-              {Array.from({ length: 16 }).map((_, i) => <div key={i} className="h-[64px] border-b border-gray-100 border-dashed w-full" />)}
+              {Array.from({ length: 24 }).map((_, i) => <div key={i} className="h-[64px] border-b border-gray-100 border-dashed w-full" />)}
             </div>
             {currentWeek.map((day, dayIndex) => {
               const dayShowtimes = currentBranchShowtimes.filter(st => st.day === day.fullDate);
@@ -429,7 +445,23 @@ export default function ShowtimesPage() {
               <span className="uppercase">{branches.find(b => String(b.branchId) === selectedBranch)?.bName || 'SELECT BRANCH'}</span>
               {!isManager && <ChevronDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />}
             </div>
-            <h1 className="text-2xl font-black text-[#2d3337] tracking-tight">{viewMode === 'week' ? "Weekly Programming" : selectedDate}</h1>
+            <div className="flex items-center gap-3 mt-1">
+              <h1 className="text-2xl font-black text-[#2d3337] tracking-tight">
+                {viewMode === 'month' ? new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 
+                 viewMode === 'week' ? "Weekly Programming" : selectedDate}
+              </h1>
+              <div className="flex items-center bg-gray-50 p-1 rounded-xl border border-gray-100 ml-2">
+                <button onClick={() => navigateDate(-1)} className="p-1.5 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button onClick={handleToday} className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-white hover:shadow-sm rounded-lg transition-all">
+                  Today
+                </button>
+                <button onClick={() => navigateDate(1)} className="p-1.5 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-4">

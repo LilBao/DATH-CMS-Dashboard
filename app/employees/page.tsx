@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, Search, CalendarClock, MoreVertical, X,
-  Edit, Trash2, Mail, Loader2
+  Edit, Trash2, Mail, Loader2, Shield
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { employeeService, EmployeeResponse, EmployeeRequest } from '@/services/employeeService';
 import FileUpload from '../components/FileUpload';
 import { ConfirmModal } from '../components/ui/confirm-modal';
 import { useAuthStore } from '@/stores/authStore';
+import { branchService } from '@/services/branchService';
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<EmployeeResponse[]>([]);
@@ -18,6 +19,7 @@ export default function EmployeesPage() {
   const [selectedRole, setSelectedRole] = useState('All Roles');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [branches, setBranches] = useState<any[]>([]);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeResponse | null>(null);
@@ -42,7 +44,7 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     if (selectedEmployee) {
-      setAvatarUrl(''); // Backend DTO doesn't store avatar, just reset or use dicebear
+      setAvatarUrl(selectedEmployee.avatarUrl || '');
     } else {
       setAvatarUrl('');
     }
@@ -52,7 +54,7 @@ export default function EmployeesPage() {
   const fetchEmployees = async () => {
     try {
       setIsLoading(true);
-      
+
       let data;
       // Nếu là Manager và có ID chi nhánh hợp lệ, gọi API theo chi nhánh
       if (isManager && managerBranchId !== undefined && managerBranchId !== null) {
@@ -63,7 +65,7 @@ export default function EmployeesPage() {
         console.log("Fetching employees via getAll");
         data = await employeeService.getAll();
       }
-      
+
       setEmployees(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error("Không thể nạp danh sách nhân viên.");
@@ -75,6 +77,11 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     fetchEmployees();
+
+    // Fetch branches for Admin
+    if (!isManager) {
+      branchService.getAll().then(data => setBranches(Array.isArray(data) ? data : []));
+    }
   }, []);
 
   const filteredEmployees = useMemo(() => {
@@ -118,6 +125,7 @@ export default function EmployeesPage() {
       userType: formData.get('role') as string,
       branchId: finalBranchId,
       salary: Number(formData.get('salary')),
+      avatarUrl: avatarUrl,
     };
 
     // Nếu là nhân viên mới, có thể thêm mật khẩu mặc định hoặc từ input
@@ -152,6 +160,22 @@ export default function EmployeesPage() {
     } catch (error) {
       toast.error("Lỗi khi thực hiện lệnh xóa");
       throw error;
+    }
+  };
+
+  const handleToggleStatus = async (emp: EmployeeResponse) => {
+    try {
+      if (emp.isActive) {
+        await employeeService.deactivate(emp.eUserId);
+        toast.success(`Đã ngừng kích hoạt tài khoản ${emp.eName}`);
+      } else {
+        await employeeService.activate(emp.eUserId);
+        toast.success(`Đã tái kích hoạt tài khoản ${emp.eName}`);
+      }
+      fetchEmployees();
+      setOpenMenuId(null);
+    } catch (error) {
+      toast.error("Không thể thay đổi trạng thái tài khoản.");
     }
   };
 
@@ -204,10 +228,9 @@ export default function EmployeesPage() {
             className="bg-white border border-gray-200 px-5 py-3 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             <option>All Roles</option>
+            <option>Admin</option>
             <option>Manager</option>
-            <option>Supervisor</option>
-            <option>Cashier</option>
-            <option>Projectionist</option>
+            <option>Staff</option>
           </select>
         </div>
 
@@ -219,6 +242,7 @@ export default function EmployeesPage() {
                 <th className="px-8 py-5">Vai trò</th>
                 <th className="px-8 py-5 text-center">Chi nhánh</th>
                 <th className="px-8 py-5">Liên hệ</th>
+                <th className="px-8 py-5">Trạng thái</th>
                 <th className="px-8 py-5 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -230,7 +254,7 @@ export default function EmployeesPage() {
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 overflow-hidden">
-                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${emp.eName}`} alt={emp.eName} className="w-full h-full object-cover" />
+                        <img src={emp.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${emp.eName}`} alt={emp.eName} className="w-full h-full object-cover" />
                       </div>
                       <div>
                         <p className="text-sm font-black text-gray-800 leading-tight">{emp.eName}</p>
@@ -249,6 +273,12 @@ export default function EmployeesPage() {
                       <Mail className="w-3.5 h-3.5 text-gray-300" /> {emp.email}
                     </div>
                   </td>
+                  <td className="px-8 py-5">
+                    <div className={`flex items-center gap-2 font-black text-[10px] uppercase ${emp.isActive ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${emp.isActive ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                      {emp.isActive ? 'Đang làm' : 'Đã nghỉ'}
+                    </div>
+                  </td>
                   <td className="px-8 py-5 text-right relative">
                     <button
                       onClick={() => setOpenMenuId(openMenuId === emp.eUserId ? null : emp.eUserId)}
@@ -264,6 +294,12 @@ export default function EmployeesPage() {
                           className="w-full flex items-center gap-3 px-5 py-4 text-xs font-black text-gray-700 hover:bg-indigo-50 transition-colors"
                         >
                           <Edit className="w-4 h-4" /> SỬA HỒ SƠ
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(emp)}
+                          className={`w-full flex items-center gap-3 px-5 py-4 text-xs font-black transition-colors border-t border-gray-50 ${emp.isActive ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                        >
+                          <Shield className="w-4 h-4" /> {emp.isActive ? 'KHÓA TÀI KHOẢN' : 'KÍCH HOẠT LẠI'}
                         </button>
                         <button
                           onClick={() => handleDelete(emp.eUserId)}
@@ -348,13 +384,28 @@ export default function EmployeesPage() {
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Chi nhánh</label>
-                  <input
+                  {isManager ? (
+                    <input
+                      name="branchId"
+                      type="hidden"
+                      value={managerBranchId || ""}
+                    />
+                  ) : null}
+                  <select
                     name="branchId"
-                    type="text"
+                    disabled={isManager}
                     defaultValue={selectedEmployee?.branchId ?? managerBranchId ?? ""}
-                    readOnly={isManager}
-                    className={`w-full px-5 py-3.5 ${isManager ? 'bg-gray-100' : 'bg-gray-50'} border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm`}
-                  />
+                    className={`w-full px-5 py-3.5 ${isManager ? 'bg-gray-100' : 'bg-gray-50'} border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm cursor-pointer`}
+                  >
+                    {!isManager && <option value="">Chọn chi nhánh...</option>}
+                    {isManager ? (
+                      <option value={managerBranchId}>{managerBranchId} (Chi nhánh của bạn)</option>
+                    ) : (
+                      branches.map(b => (
+                        <option key={b.branchId} value={b.branchId}>{b.bName} (ID: {b.branchId})</option>
+                      ))
+                    )}
+                  </select>
                 </div>
 
                 <div className="space-y-2">

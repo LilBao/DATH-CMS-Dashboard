@@ -10,22 +10,16 @@ import { toast } from 'sonner';
 import { systemService, SystemSettings } from '@/services/systemService';
 import { useEffect } from 'react';
 import RoleGuard from '../components/RoleGuard';
+import { useSystemStore } from '@/stores/systemStore';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [isCopied, setIsCopied] = useState(false);
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
+  
+  const { settings, updateSettings, fetchSettings } = useSystemStore();
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const data = await systemService.getSettings();
-        setSettings(data);
-      } catch (error) {
-        console.error("Failed to fetch settings", error);
-      }
-    };
     fetchSettings();
   }, []);
 
@@ -119,26 +113,118 @@ export default function SettingsPage() {
                     <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-xs font-black text-gray-600 uppercase">Cinema Name</label>
-                        <input type="text" defaultValue="CineFlow Premium" className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        <input 
+                          type="text" 
+                          value={settings.cinemaName} 
+                          onChange={(e) => updateSettings({ cinemaName: e.target.value })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-black text-gray-600 uppercase">Primary Email</label>
-                        <input type="email" defaultValue="admin@cineflow.com" className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        <label className="text-xs font-black text-gray-600 uppercase">Cinema Phone</label>
+                        <input 
+                          type="text" 
+                          value={settings.cinemaPhone} 
+                          onChange={(e) => updateSettings({ cinemaPhone: e.target.value })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        />
                       </div>
+                      <div className="col-span-2 space-y-2">
+                        <label className="text-xs font-black text-gray-600 uppercase">Address</label>
+                        <input 
+                          type="text" 
+                          value={settings.cinemaAddress} 
+                          onChange={(e) => updateSettings({ cinemaAddress: e.target.value })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'localization' && (
+                  <div className="space-y-8 animate-in fade-in duration-300">
+                    <div className="border-b border-gray-100 pb-4">
+                      <h3 className="text-lg font-black text-gray-800">Localization</h3>
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">Currency & Regional Settings</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-xs font-black text-gray-600 uppercase">Default Currency</label>
-                        <select className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none">
-                          <option>USD ($)</option>
-                          <option>VND (đ)</option>
-                          <option>EUR (€)</option>
+                        <select 
+                          value={settings.currency}
+                          onChange={(e) => updateSettings({ currency: e.target.value as any })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none"
+                        >
+                          <option value="USD">USD ($)</option>
+                          <option value="VND">VND (đ)</option>
                         </select>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-black text-gray-600 uppercase">Base Ticket Price</label>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <input type="text" defaultValue="12.50" className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        <label className="text-xs font-black text-gray-600 uppercase">Currency Format</label>
+                        <select 
+                          value={settings.currencyFormat}
+                          onChange={(e) => updateSettings({ currencyFormat: e.target.value })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none"
+                        >
+                          <option value="vi-VN">Vietnamese (vi-VN)</option>
+                          <option value="en-US">English US (en-US)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'notifications' && (
+                  <div className="space-y-8 animate-in fade-in duration-300">
+                    <div className="border-b border-gray-100 pb-4">
+                      <h3 className="text-lg font-black text-gray-800">Notifications</h3>
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">Manage system alerts</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                        <div>
+                          <p className="text-sm font-black text-gray-800">Email Notifications</p>
+                          <p className="text-xs text-gray-400 font-medium">Send booking confirmations via email</p>
                         </div>
+                        <button 
+                          onClick={() => updateSettings({ emailNotification: !settings.emailNotification })}
+                          className={`w-12 h-6 rounded-full relative transition-all ${settings.emailNotification ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                        >
+                          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${settings.emailNotification ? 'right-1' : 'left-1'}`} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'security' && (
+                  <div className="space-y-8 animate-in fade-in duration-300">
+                    <div className="border-b border-gray-100 pb-4">
+                      <h3 className="text-lg font-black text-gray-800">Security & Limits</h3>
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">Access control and safety</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-600 uppercase">Order Expiration (Minutes)</label>
+                        <input 
+                          type="number" 
+                          value={settings.orderExpirationMinutes} 
+                          onChange={(e) => updateSettings({ orderExpirationMinutes: Number(e.target.value) })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-600 uppercase">Seat Sync Interval (Sec)</label>
+                        <input 
+                          type="number" 
+                          value={settings.seatSyncInterval} 
+                          onChange={(e) => updateSettings({ seatSyncInterval: Number(e.target.value) })}
+                          className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none" 
+                        />
                       </div>
                     </div>
                   </div>
@@ -162,10 +248,6 @@ export default function SettingsPage() {
                             {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                           </button>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-gray-600 uppercase">Webhook URL</label>
-                        <input type="text" defaultValue="https://yourdomain.com/webhooks/cineflow" className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm font-medium text-gray-500 focus:ring-2 focus:ring-indigo-500 outline-none" />
                       </div>
                     </div>
                   </div>
@@ -251,7 +333,8 @@ export default function SettingsPage() {
                   {['#4a4bd7', '#006d4a', '#842cd3', '#f43f5e', '#f59e0b'].map((color) => (
                     <button
                       key={color}
-                      className="w-8 h-8 rounded-full shadow-inner transition-transform hover:scale-110 active:scale-95"
+                      onClick={() => updateSettings({ primaryColor: color })}
+                      className={`w-8 h-8 rounded-full shadow-inner transition-all hover:scale-110 active:scale-95 ${settings.primaryColor === color ? 'ring-4 ring-offset-2 ring-gray-200 scale-110' : ''}`}
                       style={{ backgroundColor: color }}
                     />
                   ))}

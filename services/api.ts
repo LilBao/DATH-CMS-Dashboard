@@ -22,8 +22,9 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Tự động nạp branchId nếu là MANAGER và chưa có branchId trong params
-    if (user?.role?.toUpperCase().includes('MANAGER') && (user?.branchId !== undefined && user?.branchId !== null)) {
+    // Tự động nạp branchId nếu là MANAGER hoặc STAFF và chưa có branchId trong params
+    const role = user?.role?.toUpperCase();
+    if ((role?.includes('MANAGER') || role?.includes('STAFF')) && (user?.branchId !== undefined && user?.branchId !== null)) {
       config.params = {
         ...config.params,
         branchId: config.params?.branchId ?? user.branchId
@@ -104,5 +105,80 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// BỘ NHỚ CACHE IN-MEMORY DÀNH CHO DASHBOARD
+// Áp dụng: Cache tất cả API GET, tự động xoá cache (Cache Busting) khi có hành động POST/PUT/DELETE/PATCH
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 3 * 60 * 1000; // 3 phút (thời gian sống của cache)
+
+// @ts-ignore
+const originalGet = api.get;
+// @ts-ignore
+api.get = async function (url: string, config?: any) {
+  // Bỏ qua cache nếu URL có chứa query force reload hoặc disable cache
+  const isNoCache = config?.headers?.['Cache-Control'] === 'no-cache';
+  
+  if (!isNoCache) {
+    const key = url + JSON.stringify(config?.params || {});
+    const cached = cache.get(key);
+    
+    // Nếu có cache và chưa hết hạn thì trả về cache
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`[CACHE HIT] ${url}`);
+      return Promise.resolve({ data: cached.data } as any);
+    }
+  }
+
+  // Nếu không có cache hoặc hết hạn, gọi API thật
+  const response = (await originalGet.call(this, url, config)) as any;
+  
+  // Lưu kết quả vào cache
+  if (!isNoCache && response?.data !== undefined) {
+    const key = url + JSON.stringify(config?.params || {});
+    cache.set(key, { data: response.data, timestamp: Date.now() });
+  }
+  
+  return response;
+};
+
+// Ghi đè các method thay đổi dữ liệu để tự động xoá toàn bộ cache
+const clearCache = () => {
+  if (cache.size > 0) {
+    console.log(`[CACHE CLEARED] Xoá ${cache.size} mục khỏi bộ nhớ cache do có thay đổi dữ liệu.`);
+    cache.clear();
+  }
+};
+
+// @ts-ignore
+const originalPost = api.post;
+// @ts-ignore
+api.post = async function (url: string, data?: any, config?: any) {
+  clearCache();
+  return originalPost.call(this, url, data, config);
+};
+
+// @ts-ignore
+const originalPut = api.put;
+// @ts-ignore
+api.put = async function (url: string, data?: any, config?: any) {
+  clearCache();
+  return originalPut.call(this, url, data, config);
+};
+
+// @ts-ignore
+const originalPatch = api.patch;
+// @ts-ignore
+api.patch = async function (url: string, data?: any, config?: any) {
+  clearCache();
+  return originalPatch.call(this, url, data, config);
+};
+
+// @ts-ignore
+const originalDelete = api.delete;
+// @ts-ignore
+api.delete = async function (url: string, config?: any) {
+  clearCache();
+  return originalDelete.call(this, url, config);
+};
 
 export default api;
