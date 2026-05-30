@@ -9,24 +9,23 @@ import {
   Trash2, Edit3
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { orderService, Order } from '@/services/orderService';
+import { orderService, OrderResponse } from '@/services/orderService';
 import OrderFormModal from '../components/OrderFormModal';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   
-  // State cho Modal Add/Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderResponse | null>(null);
 
-  // Fetch dữ liệu từ Service
+  // Data fetching
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
       const data = await orderService.getAll();
-      const rawOrders = Array.isArray(data) ? data : data.data ?? [];
+      const rawOrders = Array.isArray(data) ? data : (data as any).data ?? [];
       setOrders(rawOrders);
     } catch (error) {
       toast.error("Không thể nạp danh sách hóa đơn từ máy chủ.");
@@ -39,43 +38,45 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
-  // Chức năng Xóa
-  const handleDelete = async (id: string) => {
+  // Delete product logic
+  const handleDelete = async (id: number) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa hóa đơn này?")) return;
     try {
       await orderService.delete(id);
       toast.success("Đã xóa hóa đơn thành công.");
-      setOrders(prev => prev.filter(o => o.id !== id));
+      setOrders(prev => prev.filter(o => o.orderId !== id));
     } catch (error) {
       toast.error("Lỗi khi xóa hóa đơn.");
     }
   };
 
-  // Chức năng cập nhật trạng thái nhanh
-  const handleStatusChange = async (id: string, newStatus: Order['status']) => {
+  // Status update logic
+  const handleStatusChange = async (id: number, newStatus: string) => {
     try {
       await orderService.updateStatus(id, newStatus);
       toast.success("Đã cập nhật trạng thái đơn hàng.");
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+      setOrders(prev => prev.map(o => o.orderId === id ? { ...o, orderStatus: newStatus } : o));
     } catch (error) {
       toast.error("Không thể cập nhật trạng thái.");
     }
   };
 
+  // Analytics & Filters
   const filteredOrders = useMemo(() => {
-    return orders.filter(order =>
-      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.id.toString().toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    return orders.filter(order => {
+      const customerName = order.customer?.name || "Khách vãng lai";
+      return customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+             order.orderId.toString().toLowerCase().includes(searchQuery.toLowerCase());
+    });
   }, [orders, searchQuery]);
 
   const stats = useMemo(() => {
-    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
-    const totalTickets = orders.reduce((sum, order) => sum + (order.ticketQuantity || 0), 0);
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const totalTickets = orders.reduce((sum, order) => sum + (order.ticketDetails?.length || 0), 0);
     return {
       revenue: totalRevenue.toLocaleString('en-US', { style: 'currency', currency: 'USD' }),
       tickets: totalTickets,
-      pending: orders.filter(o => o.status === 'Pending').length
+      pending: orders.filter(o => o.orderStatus === 'PENDING').length
     };
   }, [orders]);
 
@@ -91,7 +92,7 @@ export default function OrdersPage() {
   return (
     <div className="w-full max-w-[1600px] mx-auto min-h-screen pb-20 px-4">
       
-      {/* Header Section */}
+      {/* Header section */}
       <div className="flex items-end justify-between mb-10 pt-12">
         <div>
           <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-[2px] mb-1 block">Sales</span>
@@ -111,13 +112,13 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Stats Grid */}
+      {/* Overview stats cards */}
       <div className="grid grid-cols-4 gap-6 mb-10">
         {[
-          { label: "Tổng doanh thu", val: stats.revenue, trend: "+12%", icon: <DollarSign className="text-indigo-600" />, bg: "bg-indigo-50" },
-          { label: "Vé đã bán", val: stats.tickets, trend: "+5%", icon: <Ticket className="text-emerald-600" />, bg: "bg-emerald-50" },
-          { label: "Đơn chờ xử lý", val: stats.pending, trend: "-2%", icon: <Clock className="text-amber-600" />, bg: "bg-amber-50" },
-          { label: "Hoàn tiền", val: "$120.00", trend: "Ổn định", icon: <RefreshCcw className="text-rose-600" />, bg: "bg-rose-50" }
+          { label: "Tổng doanh thu", val: stats.revenue, trend: "+12%", icon: <DollarSign className="w-5 h-5 text-indigo-600" />, bg: "bg-indigo-50" },
+          { label: "Vé đã bán", val: stats.tickets, trend: "+5%", icon: <Ticket className="w-5 h-5 text-emerald-600" />, bg: "bg-emerald-50" },
+          { label: "Đơn chờ xử lý", val: stats.pending, trend: "-2%", icon: <Clock className="w-5 h-5 text-amber-600" />, bg: "bg-amber-50" },
+          { label: "Hoàn tiền", val: "$120.00", trend: "Ổn định", icon: <RefreshCcw className="w-5 h-5 text-rose-600" />, bg: "bg-rose-50" }
         ].map((stat, i) => (
           <div key={i} className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-md transition-all">
             <div className={`absolute top-4 left-4 w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center`}>
@@ -138,7 +139,7 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {/* Table Section */}
+      {/* Transaction table display */}
       <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-8 border-b border-gray-50 flex items-center justify-between bg-gray-50/30">
           <h2 className="text-xl font-black text-gray-800 tracking-tight uppercase">Giao dịch gần đây</h2>
@@ -157,7 +158,7 @@ export default function OrdersPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50/50">
+              <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50/50 border-b border-gray-100">
                 <th className="px-8 py-5 text-center">ID</th>
                 <th className="px-8 py-5">Khách hàng</th>
                 <th className="px-8 py-5">Tổng tiền</th>
@@ -168,73 +169,78 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 font-bold">
-              {filteredOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer">
-                  <td className="px-8 py-5 text-center">
-                    <span className="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-3 py-1 rounded-lg">#{order.id}</span>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-indigo-100 uppercase">
-                        {order.customerName.charAt(0)}
+              {filteredOrders.map((order) => {
+                const customerName = order.customer?.name || "Khách vãng lai";
+                const customerEmail = order.customer?.email || "N/A";
+                
+                return (
+                  <tr key={order.orderId} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer">
+                    <td className="px-8 py-5 text-center">
+                      <span className="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-3 py-1 rounded-lg">#{order.orderId}</span>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-indigo-100 uppercase">
+                          {customerName.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-gray-800 leading-tight">{customerName}</p>
+                          <p className="text-[11px] text-gray-400 font-medium">{customerEmail}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-black text-gray-800 leading-tight">{order.customerName}</p>
-                        <p className="text-[11px] text-gray-400 font-medium">{order.customerEmail}</p>
+                    </td>
+                    <td className="px-8 py-5 text-sm font-black text-gray-800">
+                      {order.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                    </td>
+                    <td className="px-8 py-5">
+                      <select 
+                        value={order.orderStatus}
+                        onChange={(e) => handleStatusChange(order.orderId, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border-none outline-none cursor-pointer ${
+                          order.orderStatus === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 
+                          order.orderStatus === 'PENDING' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                        }`}
+                      >
+                        <option value="PENDING">Pending</option>
+                        <option value="PAID">Paid</option>
+                        <option value="CANCELLED">Cancelled</option>
+                      </select>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500 bg-gray-100 w-fit px-3 py-1.5 rounded-lg border border-gray-200/50">
+                        <FileText className="w-3.5 h-3.5 text-gray-400" />
+                        {order.paymentMethod}
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-sm font-black text-gray-800">
-                    {order.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                  </td>
-                  <td className="px-8 py-5">
-                    <select 
-                      value={order.status}
-                      onChange={(e) => handleStatusChange(order.id, e.target.value as any)}
-                      onClick={(e) => e.stopPropagation()}
-                      className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border-none outline-none cursor-pointer ${
-                        order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 
-                        order.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
-                      }`}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Completed">Completed</option>
-                      <option value="Refunded">Refunded</option>
-                    </select>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500 bg-gray-100 w-fit px-3 py-1.5 rounded-lg border border-gray-200/50">
-                      <FileText className="w-3.5 h-3.5 text-gray-400" />
-                      {order.paymentMethod}
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-[11px] font-bold text-gray-500 uppercase tracking-tight">
-                    {order.time}
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); setIsModalOpen(true); }}
-                        className="p-2.5 bg-white shadow-sm rounded-xl text-indigo-600 hover:bg-indigo-50 border border-indigo-100" title="Chỉnh sửa"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
-                        className="p-2.5 bg-white shadow-sm rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-100" title="Xóa"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-8 py-5 text-[11px] font-bold text-gray-500 uppercase tracking-tight">
+                      {order.orderTime}
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); setIsModalOpen(true); }}
+                          className="p-2.5 bg-white shadow-sm rounded-xl text-indigo-600 hover:bg-indigo-50 border border-indigo-100" title="Chỉnh sửa"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDelete(order.orderId); }}
+                          className="p-2.5 bg-white shadow-sm rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-100" title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* OrderFormModal */}
+      {/* Modal dialog wrapper */}
       <OrderFormModal 
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedOrder(null); }}

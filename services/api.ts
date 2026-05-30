@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
+import Cookies from 'js-cookie';
 
 // Cấu hình BaseURL của BE. Tuỳ vào môi trường sẽ dùng .env thích hợp.
 const api = axios.create({
@@ -13,7 +14,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     // Lấy token từ trạng thái lưu ở Zustand Store
-    const token = useAuthStore.getState().accessToken;
+    const token = Cookies.get('token') || useAuthStore.getState().accessToken;
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -38,11 +39,11 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = useAuthStore.getState().refreshToken;
+        const refreshToken = Cookies.get('refreshToken') || useAuthStore.getState().refreshToken;
 
         if (refreshToken) {
           // Gọi API làm mới access token
-          const refreshRes = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api'}/auth/refresh`, {
+          const refreshRes = await axios.post(`${api.defaults.baseURL}/auth/refresh`, {
             refreshToken
           });
 
@@ -50,6 +51,8 @@ api.interceptors.response.use(
           const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshRes.data.data;
 
           useAuthStore.getState().setTokens(newAccessToken, newRefreshToken);
+          Cookies.set('token', newAccessToken, { expires: 7, path: '/' });
+          Cookies.set('refreshToken', newRefreshToken, { expires: 30, path: '/' });
 
           // Cập nhật lại headers cho Request bị miss ban đầu do thiếu quyền và gọi lại
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
@@ -58,6 +61,8 @@ api.interceptors.response.use(
       } catch (refreshError) {
         // Refresh thất bại -> xóa token cũ + đưa về trang home/login
         useAuthStore.getState().logout();
+        Cookies.remove('token');
+        Cookies.remove('refreshToken');
         window.location.href = '/login'; // Chuyển về trang đăng nhập
         return Promise.reject(refreshError);
       }
