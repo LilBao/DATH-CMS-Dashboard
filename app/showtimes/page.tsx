@@ -33,7 +33,12 @@ const areOverlapping = (st1: ShowtimeResponse, st2: ShowtimeResponse) => {
   return r1.start < r2.end && r2.start < r1.end;
 };
 
-const formatDate = (date: Date) => date.toISOString().split('T')[0];
+const formatDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 const getWeekDays = (currentDate: string) => {
   const date = new Date(currentDate);
@@ -83,7 +88,7 @@ export default function ShowtimesPage() {
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeResponse | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
-  const [selectedDate, setSelectedDate] = useState('2026-05-04');
+  const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -447,8 +452,8 @@ export default function ShowtimesPage() {
             </div>
             <div className="flex items-center gap-3 mt-1">
               <h1 className="text-2xl font-black text-[#2d3337] tracking-tight">
-                {viewMode === 'month' ? new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 
-                 viewMode === 'week' ? "Weekly Programming" : selectedDate}
+                {viewMode === 'month' ? new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) :
+                  viewMode === 'week' ? "Weekly Programming" : selectedDate}
               </h1>
               <div className="flex items-center bg-gray-50 p-1 rounded-xl border border-gray-100 ml-2">
                 <button onClick={() => navigateDate(-1)} className="p-1.5 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500">
@@ -472,7 +477,7 @@ export default function ShowtimesPage() {
                 </button>
               ))}
             </div>
-            <button onClick={() => { setSelectedShowtime(null); setIsDrawerOpen(true); }} className="bg-[#4a4bd7] hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-lg shadow-indigo-100 transition-all active:scale-95">
+            <button onClick={() => { setSelectedShowtime(null); setIsDrawerOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-lg shadow-blue-100 transition-all active:scale-95">
               <Plus className="w-5 h-5" /> Add Showtime
             </button>
           </div>
